@@ -34,4 +34,3 @@ Programming styles:
 - Simplicity is a MUST. Keep the code as simpler as possible.
 - Avoid excessive defensiveness when not necessary.
 - Avoid duplication and promote reusability as much as possible.
-- 
