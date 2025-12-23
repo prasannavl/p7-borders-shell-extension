@@ -1,0 +1,6 @@
+{
+  "name": "p7 Window Borders",
+  "description": "Add window borders to GNOME windows",
+  "uuid": "p7-borders@prasannavl.com",
+  "shell-version": ["48", "49" ]
+}
