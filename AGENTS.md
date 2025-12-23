@@ -29,7 +29,7 @@ Compatibility:
 - GNOME 48, 49 in particular.
 
 
-Progamming styles:
+Programming styles:
 
 - Simplicity is a MUST. Keep the code as simpler as possible.
 - Avoid excessive defensiveness when not necessary.

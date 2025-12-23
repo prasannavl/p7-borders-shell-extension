@@ -6,161 +6,7 @@ import St from 'gi://St';
 
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-
-class ConfigManager {
-    constructor() {
-        // Hardcoded fallback default (always available)
-        this.fallbackConfig = {
-            margins: 0, // Can be a number (all sides) or { top: 4, right: 4, bottom: 4, left: 4 }
-            radius: 0,  // Can be a number (all corners) or { tl: 8, tr: 8, br: 8, bl: 8 }
-            width: 0,   // Border thickness
-            activeColor: 'rgba(51, 153, 230, 0.4)', // r=0.2 g=0.6 b=0.9 a=0.4
-            inactiveColor: 'rgba(102, 102, 102, 0.2)', // r=0.4 g=0.4 b=0.4 a=0.2
-            enabled: false,
-        };
-
-        // Raw configurations before normalization
-        const rawAppConfigs = {
-            '@default': {
-                width: 4,
-            },
-            'regex.class:^org.gnome*': {
-                margins: { top: 25, right: 25, bottom: 25, left: 25 },
-                radius: 8,
-            },
-            'regex.class:^google-chrome*': {
-                margins: { top: 10, right: 16, bottom: 32, left: 16 },
-                radius: 4,
-            },
-            'regex.class:^chrome-*': {
-                margins: { top: 10, right: 16, bottom: 32, left: 16 },
-                radius: 4,
-            },
-            'class:org.gnome.Terminal': {
-                margins: { top: 22, right: 25, bottom: 27, left: 24 },
-                radius: 8,
-            },
-            'class:vlc': {
-                margins: { top: 25, right: 25, bottom: 23, left: 25 },
-            },
-            'class:firefox': {
-                margins: { top: 22, right: 25, bottom: 27, left: 25 },
-            },
-            'class:dev.zed.Zed': {
-                margins: { top: 10, right: 10, bottom: 10, left: 10 },
-                radius: 12,
-            },
-            'class:io.ente.auth': {
-                margins: { top: 22, right: 25, bottom: 25, left: 25 },
-            },
-            'class:foot': {
-                margins: { top: -27 },
-            },
-            'class:alacritty': {
-                margins: { top: -36 },
-            },
-            'class:obsidian': {},
-            'class:zulip': {},
-            'class:slack': {},
-            'class:code': {},
-            'class:mpv': {},
-            'class:spotify': {},
-            'class:discord': {},
-        };
-        
-        // Normalize all configs during initialization
-        this.appConfigs = {};
-        
-        // First, create a complete @default by merging with fallback
-        const defaultRawConfig = rawAppConfigs['@default'] || {};
-        const defaultConfig = this.normalizeConfig({ ...this.fallbackConfig, ...defaultRawConfig });
-        this.appConfigs['@default'] = defaultConfig;
-        
-        // Then normalize all other configs using the complete @default as base
-        for (const [key, rawConfig] of Object.entries(rawAppConfigs)) {
-            if (key !== '@default') {
-                this.appConfigs[key] = this.normalizeConfig({ 
-                    ...defaultConfig, 
-                    ...{ enabled: true }, 
-                    ...rawConfig });
-            }
-        }
-    }
-
-    getConfigForWindow(metaWindow) {
-        const appId = metaWindow.get_gtk_application_id?.() || '';
-        const wmClass = (metaWindow.get_wm_class?.() || '');
-
-        // Try exact matches first
-        const exactMatch = this.appConfigs[`app:${appId}`] || 
-                          this.appConfigs[`class:${wmClass}`];
-        
-        if (exactMatch) return exactMatch;
-        
-        // Try pattern matches  
-        for (const [key, config] of Object.entries(this.appConfigs)) {
-            if (key === '@default' || !key.startsWith('regex.')) continue;
-            
-            if (key.startsWith('regex.app:') && appId && this._matches(appId, key.slice(11))) {
-                return config;
-            }
-            if (key.startsWith('regex.class:') && wmClass && this._matches(wmClass, key.slice(13))) {
-                return config;
-            }
-        }
-        
-        return this.appConfigs['@default'];
-    }
-
-    _matches(text, pattern) {
-        try {
-            return new RegExp(pattern, 'i').test(text);
-        } catch {
-            return false; // Invalid regex patterns don't match
-        }
-    }
-
-    normalizeConfig(config = {}) {
-        // Normalize margins and radius to proper object format
-        const normalized = { ...config };
-        normalized.margins = this.normalizeMargins(normalized.margins);
-        normalized.radius = this.normalizeRadius(normalized.radius);
-        
-        return normalized;
-    }
-
-    normalizeMargins(margins) {
-        // Handle single number input
-        if (typeof margins === 'number') {
-            const value = margins | 0;
-            return { top: value, right: value, bottom: value, left: value };
-        }
-        
-        // Handle object input - allow negative values
-        return {
-            top: (margins.top ?? 0) | 0,
-            right: (margins.right ?? 0) | 0,
-            bottom: (margins.bottom ?? 0) | 0,
-            left: (margins.left ?? 0) | 0
-        };
-    }
-
-    normalizeRadius(radius) {
-        // Handle single number input
-        if (typeof radius === 'number') {
-            const value = Math.max(0, radius | 0);
-            return { tl: value, tr: value, br: value, bl: value };
-        }
-        
-        // Handle object input
-        return {
-            tl: Math.max(0, (radius.tl ?? 0) | 0),
-            tr: Math.max(0, (radius.tr ?? 0) | 0),
-            br: Math.max(0, (radius.br ?? 0) | 0),
-            bl: Math.max(0, (radius.bl ?? 0) | 0)
-        };
-    }
-}
+import { ConfigManager } from './config.js';
 
 export default class WindowBorderExtension extends Extension {
     constructor(metadata) {
@@ -176,6 +22,9 @@ export default class WindowBorderExtension extends Extension {
 
         /** @type {Map<Meta.Window, number>} */
         this._pendingTrack = new Map();
+
+        /** @type {Map<Meta.Window, number>} */
+        this._pendingSyncs = new Map();
 
         /** @type {Array<{object: any, id: number}>} */
         this._signals = [];
@@ -210,25 +59,43 @@ export default class WindowBorderExtension extends Extension {
     }
 
     _syncWindow(metaWindow, border, actor, config) {
-        if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
-            try {
-                const box = actor.get_allocation_box();
-                this._syncBorderToActor(border, actor, box, config, metaWindow);
-            } catch(err) {
-                console.error(`[p7-borders] Err: ${metaWindow.get_title() || 'untitled'} => ${err}`);
-            }
+        // If there's already a pending sync for this window, skip this round
+        if (this._pendingSyncs.has(metaWindow)) {
+            return;
         }
+
+        // Schedule sync on next idle cycle for smooth updates
+        const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            this._pendingSyncs.delete(metaWindow);
+            
+            if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
+                try {
+                    const box = actor.get_allocation_box();
+                    this._syncBorderToActor(border, actor, box, config, metaWindow);
+                } catch(err) {
+                    console.error(`[p7-borders] Err: ${metaWindow.get_title() || 'untitled'} => ${err}`);
+                }
+            }
+            
+            return GLib.SOURCE_REMOVE;
+        });
+        
+        this._pendingSyncs.set(metaWindow, idleId);
     }
 
     // --- Core geometry + style sync -----------------------------------------
 
     _syncBorderToActor(border, actor, box, config, metaWindow) {
         const { margins, radius, width: borderWidth } = config;
-        console.log(`[p7-borders] Syncing border for window: ${metaWindow.get_title() || 'untitled'}`);
+        // console.log(`[p7-borders] Syncing border for window: ${metaWindow.get_title() || 'untitled'}`);
 
-        // Early returns for hidden states
+        // Early return for various states
+        const maximizeFlags = metaWindow.get_maximize_flags();
+        const isAnyMaximized = maximizeFlags !== Meta.MaximizeFlags.NONE;
+        
         if (metaWindow.fullscreen || 
-            metaWindow.is_maximized() === Meta.MaximizeFlags.BOTH || 
+            maximizeFlags === Meta.MaximizeFlags.BOTH || 
+            (!this.configManager.maximizedBordersEnabled && isAnyMaximized) ||
             !borderWidth || 
             !config.enabled) {
             this._hideBorder(border);
@@ -270,21 +137,33 @@ export default class WindowBorderExtension extends Extension {
             left: edges.left ? 0 : config.width
         };
 
+        // Check if window has any maximize flags set (we already have maximizeFlags from above)
+        const isMaximized = maximizeFlags === Meta.MaximizeFlags.HORIZONTAL || maximizeFlags === Meta.MaximizeFlags.VERTICAL;
+
         // Only radius is affected by edge snapping
-        const effRadius = {
-            tl: (edges.top || edges.left) ? 0 : radius.tl,
-            tr: (edges.top || edges.right) ? 0 : radius.tr,
-            br: (edges.bottom || edges.right) ? 0 : radius.br,
-            bl: (edges.bottom || edges.left) ? 0 : radius.bl
+        // If any maximize flags are set, make all border radius 0
+        // Otherwise, only remove radius from corners that are actually touching edges
+        // Also check if radius is globally enabled
+        const effRadius = (!this.configManager.radiusEnabled || isMaximized) ? {
+            tl: 0, tr: 0, br: 0, bl: 0
+        } : {
+            tl: (edges.top && edges.left) ? 0 : radius.tl,
+            tr: (edges.top && edges.right) ? 0 : radius.tr,
+            br: (edges.bottom && edges.right) ? 0 : radius.br,
+            bl: (edges.bottom && edges.left) ? 0 : radius.bl
         };
 
-        // Position and size calculation based on original margins
-        const posX = margins.left < 0 ? margins.left : Math.max(0, margins.left);
-        const posY = margins.top < 0 ? margins.top : Math.max(0, margins.top);
+        // Position and size calculation
+        // Border width always extends outside the window
+        // Positive margins: extend border further outside the window 
+        // Negative margins: bring border inside the window
+        const posX = -margins.left - borderWidths.left;
+        const posY = -margins.top - borderWidths.top;
         border.set_position(posX, posY);
 
-        const sizeW = Math.max(1, width + Math.max(0, -margins.left) + Math.max(0, -margins.right) - Math.max(0, margins.left) - Math.max(0, margins.right));
-        const sizeH = Math.max(1, height + Math.max(0, -margins.top) + Math.max(0, -margins.bottom) - Math.max(0, margins.top) - Math.max(0, margins.bottom));
+        // Border element size: window size + margins + border widths on both sides
+        const sizeW = Math.max(1, width + margins.left + margins.right + borderWidths.left + borderWidths.right);
+        const sizeH = Math.max(1, height + margins.top + margins.bottom + borderWidths.top + borderWidths.bottom);
         border.set_size(sizeW, sizeH);
 
         // Style application with caching
@@ -302,8 +181,7 @@ export default class WindowBorderExtension extends Extension {
                 `border-radius: ${effRadius.tl}px ${effRadius.tr}px ${effRadius.br}px ${effRadius.bl}px;` +
                 `border-style: solid;` +
                 `border-color: ${borderColor};` +
-                `background: transparent;` +
-                `box-sizing: border-box;`;
+                `background: transparent;`;
             border.set_style(styleString);
         }
         border.visible = true;
@@ -459,6 +337,13 @@ export default class WindowBorderExtension extends Extension {
             this._pendingTrack.delete(metaWindow);
         }
 
+        // Cancel any pending sync for this window
+        const pendingSyncId = this._pendingSyncs.get(metaWindow);
+        if (pendingSyncId) {
+            GLib.Source.remove(pendingSyncId);
+            this._pendingSyncs.delete(metaWindow);
+        }
+
         const data = this._windowData.get(metaWindow);
         if (!data) return;
 
@@ -547,6 +432,12 @@ export default class WindowBorderExtension extends Extension {
             object.disconnect(id);
         }
         this._signals = [];
+
+        // Cancel all pending syncs
+        for (const [win, syncId] of this._pendingSyncs.entries()) {
+            GLib.Source.remove(syncId);
+        }
+        this._pendingSyncs.clear();
 
         // Cancel pending signal tracking
         for (const [win, signalId] of this._pendingTrack.entries()) {
