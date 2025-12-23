@@ -1,9 +1,44 @@
 // config.js
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
 export class ConfigManager {
-    constructor() {
+    constructor(settings) {
+        // Use the settings object provided by Extension.getSettings()
+        this._settings = settings;
+        
+        // Interface settings for accent color detection
+        this._interfaceSettings = null;
+        try {
+            this._interfaceSettings = new Gio.Settings({ 
+                schema_id: 'org.gnome.desktop.interface' 
+            });
+        } catch (error) {
+            console.log('[p7-borders] Interface settings not available:', error.message);
+        }
+        
+        // Callbacks for config changes
+        this._configChangeCallbacks = new Set();
+        
+        // Connect to settings changes
+        this._settingsConnections = [];
+        this._settingsConnections.push(
+            this._settings.connect('changed', (settings, key) => {
+                this._onSettingChanged(key);
+            })
+        );
+        
+        // Connect to accent color changes
+        if (this._interfaceSettings) {
+            this._settingsConnections.push(
+                this._interfaceSettings.connect('changed::accent-color', () => {
+                    this._onAccentColorChanged();
+                })
+            );
+        }
+        
+        // Initialize config from gsettings or set defaults
         this.appConfigFallback = {
             margins: 0,
             radius: 0,
@@ -11,97 +46,162 @@ export class ConfigManager {
             activeColor: this._getAccentColor(),
             inactiveColor: 'rgba(102, 102, 102, 0.2)',
             enabled: false,
-        };
-
-        this.radiusEnabled = true;
-        this.maximizedBordersEnabled = true;
-
-        const rawAppConfigs = {
-            '@default': {
-                width: 4,
-            },
-            // Preset definitions
-            '@electronPreset': {},
-            '@chromePreset': {
-                margins: { top: -10, right: -16, bottom: -32, left: -16 },
-                radius: { tl: 12, tr: 12, br: 0, bl: 0 },
-            },
-            '@gnomePreset': {
-                margins: { top: -25, right: -25, bottom: -25, left: -25 },
-                radius: 18,
-            },
-            '@gtk3Preset': {
-                margins: { top: -22, right: -25, bottom: -28, left: -25 },
-                radius: { tl: 12, tr: 12, br: 0, bl: 0 }
-            },
-            '@firefoxPreset': {
-                margins: { top: -22, right: -25, bottom: -28, left: -25 },
-                radius: { tl: 18, tr: 18, br: 0, bl: 0 }
-            },
-            '@zedPreset': {
-                margins: { top: -10, right: -10, bottom: -10, left: -10 },
-                radius: 14,
-            },
-            '@qtPreset': {
-                margins: { top: -25, right: -25, bottom: -24, left: -25 },
-                radius: { tl: 18, tr: 18, br: 0, bl: 0 },
-            },
-            'regex.class:^org.gnome*': '@gnomePreset',
-            'regex.class:^google-chrome*': '@chromePreset',
-            'regex.class:^chrome-*': '@chromePreset',
-            'class:org.gnome.Terminal': '@gtk3Preset',
-            'class:vlc': '@qtPreset',
-            'class:firefox': '@firefoxPreset',
-            'class:dev.zed.Zed': '@zedPreset',
-            'class:io.ente.auth': '@gtk3Preset',
-            'class:obsidian': '@electronPreset',
-            'class:zulip': '@electronPreset',
-            'class:slack': '@electronPreset',
-            'class:code': '@electronPreset',
-            'class:mpv': '@electronPreset',
-            'class:spotify': '@electronPreset',
-            'class:discord': '@electronPreset',
-            'class:org.gimp.GIMP': '@gtk3Preset',
-            'class:org.inkscape.Inkscape': '@gtk3Preset',
-            'class:krita': '@qtPreset',
-            'class:qpwgraph': '@qtPreset',
-            'class:foot': {
-                margins: { top: 27 },
-            },
-            'class:Alacritty': {
-                margins: { top: 36 },
-            },
+            maximizedBorder: false,
         };
         
-        // Extract presets and resolve preset references
-        const resolvedConfigs = this._resolvePresets(rawAppConfigs);
+        this._initializeDefaults();
         
-        // Normalize all configs during initialization
+        // Check for first run and save defaults if needed (after defaults are loaded)
+        this._ensureDefaultsSaved();
+    }
+
+    _initializeDefaults() {
+        // Load boolean settings
+        this.radiusEnabled = this._settings.get_boolean('radius-enabled');
+        
+        // Update fallback config from all current settings
+        this.appConfigFallback.activeColor = this._getAccentColor();
+        this.appConfigFallback.inactiveColor = this._settings.get_string('default-inactive-color');
+        this.appConfigFallback.width = this._settings.get_int('default-width');
+        this.appConfigFallback.margins = this._settings.get_int('default-margins');
+        this.appConfigFallback.radius = this._settings.get_int('default-radius');
+        this.appConfigFallback.enabled = this._settings.get_boolean('default-enabled');
+        this.appConfigFallback.maximizedBorder = this._settings.get_boolean('default-maximized-borders');
+        
+        // Load app configs from gsettings
+        const savedConfigs = this._settings.get_string('app-configs');
+        if (savedConfigs && savedConfigs !== '{}') {
+            try {
+                this._savedAppConfigs = JSON.parse(savedConfigs);
+            } catch (error) {
+                console.warn('[p7-borders] Failed to parse saved app configs:', error);
+                this._savedAppConfigs = {};
+            }
+        }
+        
+        // If no saved configs, set up defaults
+        if (!this._savedAppConfigs || Object.keys(this._savedAppConfigs).length === 0) {
+            this._savedAppConfigs = {
+                '@default': { width: 4 },
+                '@electronPreset': { maximizedBorder: true },
+                '@chromePreset': {
+                    margins: { top: -10, right: -16, bottom: -32, left: -16 },
+                    radius: { tl: 12, tr: 12, br: 0, bl: 0 },
+                },
+                '@gnomePreset': {
+                    margins: { top: -25, right: -25, bottom: -25, left: -25 },
+                    radius: 18,
+                },
+                '@gtk3Preset': {
+                    margins: { top: -22, right: -25, bottom: -28, left: -25 },
+                    radius: { tl: 12, tr: 12, br: 0, bl: 0 }
+                },
+                '@firefoxPreset': {
+                    margins: { top: -22, right: -25, bottom: -28, left: -25 },
+                    radius: { tl: 18, tr: 18, br: 0, bl: 0 }
+                },
+                '@zedPreset': {
+                    margins: { top: -10, right: -10, bottom: -10, left: -10 },
+                    radius: 14,
+                },
+                '@qtPreset': {
+                    margins: { top: -25, right: -25, bottom: -24, left: -25 },
+                    radius: { tl: 18, tr: 18, br: 0, bl: 0 },
+                },
+                'regex.class:^org.gnome*': '@gnomePreset',
+                'regex.class:^google-chrome*': '@chromePreset',
+                'regex.class:^chrome-*': '@chromePreset',
+                'class:org.gnome.Terminal': '@gtk3Preset',
+                'class:vlc': '@qtPreset',
+                'class:firefox': '@firefoxPreset',
+                'class:dev.zed.Zed': '@zedPreset',
+                'class:io.ente.auth': '@gtk3Preset',
+                'class:obsidian': '@electronPreset',
+                'class:zulip': '@electronPreset',
+                'class:slack': '@electronPreset',
+                'class:code': '@electronPreset',
+                'class:mpv': '@electronPreset',
+                'class:spotify': '@electronPreset',
+                'class:discord': '@electronPreset',
+                'class:org.gimp.GIMP': '@gtk3Preset',
+                'class:org.inkscape.Inkscape': '@gtk3Preset',
+                'class:krita': '@qtPreset',
+                'class:qpwgraph': '@qtPreset',
+                'class:foot': { margins: { top: 27 }, maximizedBorder: true },
+                'class:Alacritty': { margins: { top: 36 }, radius: { tl: 12, tr: 12 }, maximizedBorder: true },
+            };
+            
+            // Save defaults to gsettings
+            this._settings.set_string('app-configs', JSON.stringify(this._savedAppConfigs));
+        }
+        
+        // Build normalized app configs
+        const resolvedConfigs = this._resolvePresets(this._savedAppConfigs);
         this.appConfigs = {};
         
-        // First, create a complete @default by merging with fallback
-        const defaultRawConfig = rawAppConfigs['@default'] || {};
+        // Create @default config by merging with fallback
+        const defaultRawConfig = this._savedAppConfigs['@default'] || {};
         const defaultConfig = this.normalizeConfig({ ...this.appConfigFallback, ...defaultRawConfig });
         this.appConfigs['@default'] = defaultConfig;
         
-        // Then normalize all other configs using the complete @default as base
+        // Normalize all other configs using @default as base
         for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
             if (!key.startsWith('@')) {
                 this.appConfigs[key] = this.normalizeConfig({ 
                     ...defaultConfig, 
                     ...{ enabled: true }, 
-                    ...rawConfig });
+                    ...rawConfig 
+                });
             }
         }
     }
-
+    
+    _ensureDefaultsSaved() {
+        // Check if this is the first run by looking at config-version
+        const configVersion = this._settings.get_int('config-version');
+        
+        if (configVersion === 1) {
+            // First run - save all default values to make them visible in dconf-editor
+            console.log('[p7-borders] First run detected, saving default configuration values');
+            
+            // Save all boolean defaults
+            this._settings.set_boolean('radius-enabled', this._settings.get_boolean('radius-enabled'));
+            this._settings.set_boolean('default-maximized-borders', this._settings.get_boolean('default-maximized-borders'));
+            this._settings.set_boolean('default-enabled', this._settings.get_boolean('default-enabled'));
+            
+            // Save all integer defaults
+            this._settings.set_int('default-margins', this._settings.get_int('default-margins'));
+            this._settings.set_int('default-radius', this._settings.get_int('default-radius'));
+            this._settings.set_int('default-width', this._settings.get_int('default-width'));
+            
+            // Save all string defaults
+            this._settings.set_string('default-active-color', this._settings.get_string('default-active-color'));
+            this._settings.set_string('default-inactive-color', this._settings.get_string('default-inactive-color'));
+            this._settings.set_string('app-configs', this._settings.get_string('app-configs'));
+            
+            // Update config version to indicate defaults have been saved
+            this._settings.set_int('config-version', 2);
+            
+            console.log('[p7-borders] Default configuration values saved to dconf');
+        }
+    }
+    
     _getAccentColor() {
         // Custom color that works well for all dark and light themes
         const defaultAccent = 'rgba(51, 153, 230, 0.4)'; 
+        
+        // Check if we should use auto accent color
+        const activeColor = this._settings.get_string('default-active-color');
+        if (activeColor !== 'auto') {
+            return activeColor;
+        }
+        
+        if (!this._interfaceSettings) {
+            return defaultAccent;
+        }
+        
         try {
-            // Try to get GNOME's accent color preference
-            const interfaceSettings = new Gio.Settings({ schema: 'org.gnome.desktop.interface' });
-            const accentColor = interfaceSettings.get_string('accent-color');
+            const accentColor = this._interfaceSettings.get_string('accent-color');
             
             // Map GNOME accent colors to RGBA values with alpha 0.4
             const accentColorMap = {
@@ -116,11 +216,90 @@ export class ConfigManager {
                 'slate': 'rgba(99, 104, 128, 0.4)',
             };
             
-            return accentColorMap[accentColor] || defaultAccent; // Default to our custom color
+            return accentColorMap[accentColor] || defaultAccent;
         } catch (_err) {
-            // Fallback to blue if accent color detection fails
             return defaultAccent;
         }
+    }
+    
+    // --- GSettings change handling -----------------------------------------
+    
+    _onSettingChanged(key) {
+        this._initializeDefaults();
+        this._notifyConfigChange('settings-changed');
+    }
+    
+    _onAccentColorChanged() {
+        this._initializeDefaults();
+        this._notifyConfigChange('accent-color');
+    }
+    
+    _notifyConfigChange(changeType) {
+        for (const callback of this._configChangeCallbacks) {
+            try {
+                callback(changeType);
+            } catch (error) {
+                console.error('[p7-borders] Error in config change callback:', error);
+            }
+        }
+    }
+    
+    // --- Public API for dynamic updates ------------------------------------
+    
+    /**
+     * Add a callback to be called when configuration changes
+     * @param {Function} callback - Function to call on config changes
+     */
+    addConfigChangeListener(callback) {
+        this._configChangeCallbacks.add(callback);
+    }
+    
+    /**
+     * Remove a config change callback
+     * @param {Function} callback - The callback to remove
+     */
+    removeConfigChangeListener(callback) {
+        this._configChangeCallbacks.delete(callback);
+    }
+    
+    /**
+     * Save app configurations to gsettings
+     * @param {Object} configs - The app configurations to save
+     */
+    saveAppConfigs(configs) {
+        try {
+            this._settings.set_string('app-configs', JSON.stringify(configs));
+            this._initializeDefaults();
+        } catch (error) {
+            console.error('[p7-borders] Failed to save app configs:', error);
+        }
+    }
+    
+    /**
+     * Clean up resources
+     */
+    destroy() {
+        // Disconnect settings signals
+        for (const connectionId of this._settingsConnections) {
+            try {
+                this._settings.disconnect(connectionId);
+            } catch (error) {
+                // Signal might already be disconnected
+            }
+        }
+        
+        if (this._interfaceSettings) {
+            for (const connectionId of this._settingsConnections) {
+                try {
+                    this._interfaceSettings.disconnect(connectionId);
+                } catch (error) {
+                    // Signal might already be disconnected
+                }
+            }
+        }
+        
+        this._settingsConnections = [];
+        this._configChangeCallbacks.clear();
     }
 
     _resolvePresets(rawConfigs) {
@@ -191,43 +370,38 @@ export class ConfigManager {
     }
 
     normalizeConfig(config = {}) {
-        // Normalize margins and radius to proper object format
-        const normalized = { ...config };
-        normalized.margins = this.normalizeMargins(normalized.margins);
-        normalized.radius = this.normalizeRadius(normalized.radius);
-        
-        return normalized;
+        return {
+            ...config,
+            margins: this.normalizeMargins(config.margins),
+            radius: this.normalizeRadius(config.radius)
+        };
     }
 
     normalizeMargins(margins) {
-        // Handle single number input
         if (typeof margins === 'number') {
             const value = margins | 0;
             return { top: value, right: value, bottom: value, left: value };
         }
         
-        // Handle object input - allow negative values
         return {
-            top: (margins.top ?? 0) | 0,
-            right: (margins.right ?? 0) | 0,
-            bottom: (margins.bottom ?? 0) | 0,
-            left: (margins.left ?? 0) | 0
+            top: (margins?.top ?? 0) | 0,
+            right: (margins?.right ?? 0) | 0,
+            bottom: (margins?.bottom ?? 0) | 0,
+            left: (margins?.left ?? 0) | 0
         };
     }
 
     normalizeRadius(radius) {
-        // Handle single number input
         if (typeof radius === 'number') {
             const value = Math.max(0, radius | 0);
             return { tl: value, tr: value, br: value, bl: value };
         }
         
-        // Handle object input
         return {
-            tl: Math.max(0, (radius.tl ?? 0) | 0),
-            tr: Math.max(0, (radius.tr ?? 0) | 0),
-            br: Math.max(0, (radius.br ?? 0) | 0),
-            bl: Math.max(0, (radius.bl ?? 0) | 0)
+            tl: Math.max(0, (radius?.tl ?? 0) | 0),
+            tr: Math.max(0, (radius?.tr ?? 0) | 0),
+            br: Math.max(0, (radius?.br ?? 0) | 0),
+            bl: Math.max(0, (radius?.bl ?? 0) | 0)
         };
     }
 }

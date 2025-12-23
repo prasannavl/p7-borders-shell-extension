@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema path="/org/gnome/shell/extensions/p7-borders/" id="org.gnome.shell.extensions.p7-borders">
+    
+    <!-- Global settings -->
+    <key name="radius-enabled" type="b">
+      <default>true</default>
+      <summary>Enable border radius</summary>
+      <description>Enable or disable rounded corners for window borders</description>
+    </key>
+    
+    <key name="default-maximized-borders" type="b">
+      <default>false</default>
+      <summary>Default maximized borders setting</summary>
+      <description>Default setting for whether borders should be shown on maximized windows</description>
+    </key>
+    
+    <!-- Default fallback configuration -->
+    <key name="default-margins" type="i">
+      <default>0</default>
+      <summary>Default margins</summary>
+      <description>Default margins for window borders</description>
+    </key>
+    
+    <key name="default-radius" type="i">
+      <default>0</default>
+      <summary>Default border radius</summary>
+      <description>Default border radius for window borders</description>
+    </key>
+    
+    <key name="default-width" type="i">
+      <default>0</default>
+      <summary>Default border width</summary>
+      <description>Default border width</description>
+    </key>
+    
+    <key name="default-active-color" type="s">
+      <default>'auto'</default>
+      <summary>Default active border color</summary>
+      <description>Default color for active window borders ('auto' uses accent color)</description>
+    </key>
+    
+    <key name="default-inactive-color" type="s">
+      <default>'rgba(102, 102, 102, 0.2)'</default>
+      <summary>Default inactive border color</summary>
+      <description>Default color for inactive window borders</description>
+    </key>
+    
+    <key name="default-enabled" type="b">
+      <default>false</default>
+      <summary>Enable borders by default</summary>
+      <description>Enable borders by default for all windows</description>
+    </key>
+    
+    <!-- Application configurations as JSON string -->
+    <key name="app-configs" type="s">
+      <default>'{}'</default>
+      <summary>Application-specific configurations</summary>
+      <description>JSON string containing application-specific border configurations</description>
+    </key>
+    
+    <!-- Configuration version for migrations -->
+    <key name="config-version" type="i">
+      <default>1</default>
+      <summary>Configuration version</summary>
+      <description>Version number for configuration migration purposes</description>
+    </key>
+    
+  </schema>
+</schemalist>

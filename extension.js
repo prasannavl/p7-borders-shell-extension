@@ -32,7 +32,14 @@ export default class WindowBorderExtension extends Extension {
         /** @type {Meta.Window | null} */
         this._lastFocusedWindow = null;
         
-        this.configManager = new ConfigManager();
+        this.configManager = new ConfigManager(this.getSettings());
+        
+        // Listen for config changes and update all windows
+        this._configChangeCallback = (changeType) => {
+            console.log(`[p7-borders] Config changed: ${changeType}`);
+            this._onConfigChanged(changeType);
+        };
+        this.configManager.addConfigChangeListener(this._configChangeCallback);
     }
 
     // --- Helpers ------------------------------------------------------------
@@ -53,7 +60,14 @@ export default class WindowBorderExtension extends Extension {
 
     _resyncAll() {
         for (const [win, data] of this._windowData.entries()) {
-            const { actor, border, config } = data;
+            const { actor, border } = data;
+            // Get fresh config to ensure we have latest colors/settings
+            const config = this.configManager.getConfigForWindow(win);
+            data.config = config; // Update stored config
+            
+            // Clear style cache to force reapplication of colors
+            border._lastStyleKey = null;
+            
             this._syncWindow(win, border, actor, config);
         }
     }
@@ -67,7 +81,6 @@ export default class WindowBorderExtension extends Extension {
         // Schedule sync on next idle cycle for smooth updates
         const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
             this._pendingSyncs.delete(metaWindow);
-            
             if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
                 try {
                     const box = actor.get_allocation_box();
@@ -76,10 +89,8 @@ export default class WindowBorderExtension extends Extension {
                     console.error(`[p7-borders] Err: ${metaWindow.get_title() || 'untitled'} => ${err}`);
                 }
             }
-            
             return GLib.SOURCE_REMOVE;
         });
-        
         this._pendingSyncs.set(metaWindow, idleId);
     }
 
@@ -91,11 +102,11 @@ export default class WindowBorderExtension extends Extension {
 
         // Early return for various states
         const maximizeFlags = metaWindow.get_maximize_flags();
-        const isAnyMaximized = maximizeFlags !== Meta.MaximizeFlags.NONE;
+        const isAnyMaximized = maximizeFlags !== 0;
         
         if (metaWindow.fullscreen || 
             maximizeFlags === Meta.MaximizeFlags.BOTH || 
-            (!this.configManager.maximizedBordersEnabled && isAnyMaximized) ||
+            (!config.maximizedBorder && isAnyMaximized) ||
             !borderWidth || 
             !config.enabled) {
             this._hideBorder(border);
@@ -200,6 +211,10 @@ export default class WindowBorderExtension extends Extension {
         if (JSON.stringify(data.config) === JSON.stringify(config)) return;
 
         data.config = config;
+        
+        // Clear style cache to force reapplication of colors/settings
+        border._lastStyleKey = null;
+        
         this._syncWindow(metaWindow, border, actor, config);
         
         const windowTitle = metaWindow.get_title() || 'untitled';
@@ -270,7 +285,10 @@ export default class WindowBorderExtension extends Extension {
         const signals = [
             { 
                 object: actor, 
-                id: actor.connect('notify::allocation', () => this._syncWindow(metaWindow, border, actor, config))
+                id: actor.connect('notify::allocation', () => {
+                    const data = this._windowData.get(metaWindow);
+                    if (data) this._syncWindow(metaWindow, border, actor, data.config);
+                })
             },
             { 
                 object: metaWindow, 
@@ -282,7 +300,8 @@ export default class WindowBorderExtension extends Extension {
                     if (metaWindow.fullscreen) {
                         this._hideBorder(border);
                     } else {
-                        this._syncWindow(metaWindow, border, actor, config);
+                        const data = this._windowData.get(metaWindow);
+                        if (data) this._syncWindow(metaWindow, border, actor, data.config);
                     }
                 })
             },
@@ -300,7 +319,10 @@ export default class WindowBorderExtension extends Extension {
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('notify::appears-focused', () => this._syncWindow(metaWindow, border, actor, config))
+                id: metaWindow.connect('notify::appears-focused', () => {
+                    const data = this._windowData.get(metaWindow);
+                    if (data) this._syncWindow(metaWindow, border, actor, data.config);
+                })
             }
         ];
 
@@ -337,6 +359,8 @@ export default class WindowBorderExtension extends Extension {
             this._pendingTrack.delete(metaWindow);
         }
 
+        const data = this._windowData.get(metaWindow);
+
         // Cancel any pending sync for this window
         const pendingSyncId = this._pendingSyncs.get(metaWindow);
         if (pendingSyncId) {
@@ -344,7 +368,6 @@ export default class WindowBorderExtension extends Extension {
             this._pendingSyncs.delete(metaWindow);
         }
 
-        const data = this._windowData.get(metaWindow);
         if (!data) return;
 
         const { border, actor, signals } = data;
@@ -369,6 +392,12 @@ export default class WindowBorderExtension extends Extension {
 
         this._windowData.delete(metaWindow);
     }
+    
+    _onConfigChanged(changeType) {
+        // For any config change, resync all windows
+        this._resyncAll();
+    }
+
     _onFocusChanged() {
         const currentFocus = global.display.focus_window;
         
@@ -427,6 +456,14 @@ export default class WindowBorderExtension extends Extension {
 
     disable() {
         console.log('[p7-borders] Extension disabled');
+        
+        // Remove config change listener
+        if (this._configChangeCallback) {
+            this.configManager.removeConfigChangeListener(this._configChangeCallback);
+        }
+        
+        // Clean up config manager
+        this.configManager.destroy();
         // Disconnect all extension signals
         for (const {object, id} of this._signals) {
             object.disconnect(id);
