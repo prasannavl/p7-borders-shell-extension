@@ -1,1 +1,2 @@
-schemas/*.compiled
+/schemas/*.compiled
+/dist/
