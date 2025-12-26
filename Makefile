@@ -2,6 +2,8 @@ UUID := p7-borders@prasannavl.com
 DIST_DIR := dist
 SCHEMAS_DIR := schemas
 JS_FILES := $(wildcard *.js)
+EXTRA_SOURCES := $(filter-out extension.js prefs.js,$(JS_FILES))
+EXTRA_SOURCE_ARGS := $(foreach f,$(EXTRA_SOURCES),--extra-source=$(f))
 
 .PHONY: lint schemas pack install enable disable reload clean
 
@@ -13,7 +15,7 @@ schemas:
 
 pack: schemas
 	mkdir -p $(DIST_DIR)
-	gnome-extensions pack --force --out-dir $(DIST_DIR)
+	gnome-extensions pack --force --out-dir $(DIST_DIR) $(EXTRA_SOURCE_ARGS)
 
 install: pack
 	gnome-extensions install --force $(DIST_DIR)/$(UUID).shell-extension.zip
