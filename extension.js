@@ -74,9 +74,11 @@ export default class P7BordersExtension extends Extension {
     }
 
     _syncWindow(metaWindow, border, actor, config) {
-        // If there"s already a pending sync for this window, skip this round
-        if (this._pendingSyncs.has(metaWindow)) {
-            return;
+        // Coalesce rapid updates: only the last scheduled sync runs
+        const existing = this._pendingSyncs.get(metaWindow);
+        if (existing) {
+            GLib.Source.remove(existing);
+            this._pendingSyncs.delete(metaWindow);
         }
 
         // Schedule sync on next idle cycle for smooth updates
