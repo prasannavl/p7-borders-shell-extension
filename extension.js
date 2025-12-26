@@ -8,7 +8,7 @@ import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { ConfigManager } from "./config.js";
 
-export default class WindowBorderExtension extends Extension {
+export default class P7BordersExtension extends Extension {
     constructor(metadata) {
         super(metadata);
 
@@ -323,6 +323,14 @@ export default class WindowBorderExtension extends Extension {
                     const data = this._windowData.get(metaWindow);
                     if (data) this._syncWindow(metaWindow, border, actor, data.config);
                 })
+            },
+            {
+                object: metaWindow,
+                id: metaWindow.connect("position-changed", () => {
+                    // Prevent mutter from leaving artifacts when moving windows quickly
+                    // until resize is fully complete.
+                    border.queue_redraw();
+                })
             }
         ];
 
@@ -393,24 +401,33 @@ export default class WindowBorderExtension extends Extension {
         this._windowData.delete(metaWindow);
     }
     
-    _onConfigChanged(changeType) {
+    _onConfigChanged(_changeType) {
         // For any config change, resync all windows
         this._resyncAll();
     }
 
     _onFocusChanged() {
         const currentFocus = global.display.focus_window;
+        const lastData = this._lastFocusedWindow ? this._windowData.get(this._lastFocusedWindow) : null;
+        const currentData = currentFocus ? this._windowData.get(currentFocus) : null;
+
+        const lastValid = lastData && !lastData.actor?.is_destroyed?.() && !lastData.border?.is_destroyed?.();
+        const currentValid = !currentFocus || (currentData && !currentData.actor?.is_destroyed?.() && !currentData.border?.is_destroyed?.());
+
+        if ((this._lastFocusedWindow && !lastValid) || (currentFocus && !currentValid)) {
+            this._resyncAll();
+            this._lastFocusedWindow = currentFocus;
+            return;
+        }
         
         // Sync the previously focused window (if any)
-        if (this._lastFocusedWindow && this._windowData.has(this._lastFocusedWindow)) {
-            const data = this._windowData.get(this._lastFocusedWindow);
-            this._syncWindow(this._lastFocusedWindow, data.border, data.actor, data.config);
+        if (lastData) {
+            this._syncWindow(this._lastFocusedWindow, lastData.border, lastData.actor, lastData.config);
         }
         
         // Sync the newly focused window (if any)
-        if (currentFocus && this._windowData.has(currentFocus)) {
-            const data = this._windowData.get(currentFocus);
-            this._syncWindow(currentFocus, data.border, data.actor, data.config);
+        if (currentData) {
+            this._syncWindow(currentFocus, currentData.border, currentData.actor, currentData.config);
         }
         
         // Update last focused window
@@ -429,7 +446,7 @@ export default class WindowBorderExtension extends Extension {
         this._signals = [
             {
                 object: display,
-                id: display.connect("window-created", (display, metaWindow) => this._onWindowCreated(metaWindow))
+                id: display.connect("window-created", (_display, metaWindow) => this._onWindowCreated(metaWindow))
             },
             {
                 object: display,

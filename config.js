@@ -23,7 +23,7 @@ export class ConfigManager {
         // Connect to settings changes
         this._settingsConnections = [];
         this._settingsConnections.push(
-            this._settings.connect("changed", (settings, key) => {
+            this._settings.connect("changed", (_settings, key) => {
                 this._onSettingChanged(key);
             })
         );
@@ -98,12 +98,13 @@ export class ConfigManager {
                 },
                 // Adw
                 "regex.class:^org.gnome.*": "@adwPreset",
-                "regex.class:^org.freedesktop.*": "@adwPreset",
+                // "regex.class:^org.freedesktop.*": "@adwPreset",
                 "class:com.github.tchx84.Flatseal": "@adwPreset",
                 "class:simple-scan": "@adwPreset",
                 "class:re.sonny.Workbench": "@adwPreset",
                 // Gtk
                 "class:org.gnome.Terminal": "@gtkPreset",
+                "class:org.gnome.seahorse.Application": "@gtkPreset",
                 "class:firefox": "@gtkPreset",
                 "class:io.ente.auth": "@gtkPreset",
                 "class:dconf-editor": "@gtkPreset",
