@@ -1,7 +1,6 @@
 // config.js
 
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
+import Gio from "gi://Gio";
 
 export class ConfigManager {
     constructor(settings) {
@@ -12,10 +11,10 @@ export class ConfigManager {
         this._interfaceSettings = null;
         try {
             this._interfaceSettings = new Gio.Settings({ 
-                schema_id: 'org.gnome.desktop.interface' 
+                schema_id: "org.gnome.desktop.interface" 
             });
         } catch (error) {
-            console.log('[p7-borders] Interface settings not available:', error.message);
+            console.log("[p7-borders] Interface settings not available:", error.message);
         }
         
         // Callbacks for config changes
@@ -24,7 +23,7 @@ export class ConfigManager {
         // Connect to settings changes
         this._settingsConnections = [];
         this._settingsConnections.push(
-            this._settings.connect('changed', (settings, key) => {
+            this._settings.connect("changed", (settings, key) => {
                 this._onSettingChanged(key);
             })
         );
@@ -32,49 +31,39 @@ export class ConfigManager {
         // Connect to accent color changes
         if (this._interfaceSettings) {
             this._settingsConnections.push(
-                this._interfaceSettings.connect('changed::accent-color', () => {
+                this._interfaceSettings.connect("changed::accent-color", () => {
                     this._onAccentColorChanged();
                 })
             );
         }
         
         // Initialize config from gsettings or set defaults
-        this.appConfigFallback = {
-            margins: 0,
-            radius: 0,
-            width: 0,
-            activeColor: this._getAccentColor(),
-            inactiveColor: 'rgba(102, 102, 102, 0.2)',
-            enabled: false,
-            maximizedBorder: false,
-        };
-        
-        this._initializeDefaults();
-        
+        this.appConfigFallback = {};
+        this._init();
         // Check for first run and save defaults if needed (after defaults are loaded)
         this._ensureDefaultsSaved();
     }
 
-    _initializeDefaults() {
+    _init() {
         // Load boolean settings
-        this.radiusEnabled = this._settings.get_boolean('radius-enabled');
+        this.radiusEnabled = this._settings.get_boolean("radius-enabled");
         
         // Update fallback config from all current settings
         this.appConfigFallback.activeColor = this._getAccentColor();
-        this.appConfigFallback.inactiveColor = this._settings.get_string('default-inactive-color');
-        this.appConfigFallback.width = this._settings.get_int('default-width');
-        this.appConfigFallback.margins = this._settings.get_int('default-margins');
-        this.appConfigFallback.radius = this._settings.get_int('default-radius');
-        this.appConfigFallback.enabled = this._settings.get_boolean('default-enabled');
-        this.appConfigFallback.maximizedBorder = this._settings.get_boolean('default-maximized-borders');
+        this.appConfigFallback.inactiveColor = this._settings.get_string("default-inactive-color");
+        this.appConfigFallback.width = this._settings.get_int("default-width");
+        this.appConfigFallback.margins = this._settings.get_int("default-margins");
+        this.appConfigFallback.radius = this._settings.get_int("default-radius");
+        this.appConfigFallback.enabled = this._settings.get_boolean("default-enabled");
+        this.appConfigFallback.maximizedBorder = this._settings.get_boolean("default-maximized-borders");
         
         // Load app configs from gsettings
-        const savedConfigs = this._settings.get_string('app-configs');
-        if (savedConfigs && savedConfigs !== '{}') {
+        const savedConfigs = this._settings.get_string("app-configs");
+        if (savedConfigs && savedConfigs !== "{}") {
             try {
                 this._savedAppConfigs = JSON.parse(savedConfigs);
             } catch (error) {
-                console.warn('[p7-borders] Failed to parse saved app configs:', error);
+                console.warn("[p7-borders] Failed to parse saved app configs:", error);
                 this._savedAppConfigs = {};
             }
         }
@@ -82,57 +71,58 @@ export class ConfigManager {
         // If no saved configs, set up defaults
         if (!this._savedAppConfigs || Object.keys(this._savedAppConfigs).length === 0) {
             this._savedAppConfigs = {
-                '@default': { width: 4 },
-                '@electronPreset': { maximizedBorder: true },
-                '@chromePreset': {
+                "@default": { width: 2 },
+                "@electronPreset": { maximizedBorder: true },
+                "@chromePreset": {
                     margins: { top: -10, right: -16, bottom: -32, left: -16 },
                     radius: { tl: 12, tr: 12, br: 0, bl: 0 },
                 },
-                '@gnomePreset': {
+                "@gnomePreset": {
                     margins: { top: -25, right: -25, bottom: -25, left: -25 },
                     radius: 18,
                 },
-                '@gtk3Preset': {
+                "@gtk3Preset": {
                     margins: { top: -22, right: -25, bottom: -28, left: -25 },
-                    radius: { tl: 12, tr: 12, br: 0, bl: 0 }
+                    radius: { tl: 10, tr: 10, br: 0, bl: 0 }
                 },
-                '@firefoxPreset': {
+                "@firefoxPreset": {
                     margins: { top: -22, right: -25, bottom: -28, left: -25 },
-                    radius: { tl: 18, tr: 18, br: 0, bl: 0 }
+                    radius: { tl: 10, tr: 10, br: 0, bl: 0 }
                 },
-                '@zedPreset': {
-                    margins: { top: -10, right: -10, bottom: -10, left: -10 },
+                "@zedPreset": {
+                    margins: { top: -10, right: -11, bottom: -11, left: -10 },
                     radius: 14,
                 },
-                '@qtPreset': {
+                "@qtPreset": {
                     margins: { top: -25, right: -25, bottom: -24, left: -25 },
                     radius: { tl: 18, tr: 18, br: 0, bl: 0 },
                 },
-                'regex.class:^org.gnome*': '@gnomePreset',
-                'regex.class:^google-chrome*': '@chromePreset',
-                'regex.class:^chrome-*': '@chromePreset',
-                'class:org.gnome.Terminal': '@gtk3Preset',
-                'class:vlc': '@qtPreset',
-                'class:firefox': '@firefoxPreset',
-                'class:dev.zed.Zed': '@zedPreset',
-                'class:io.ente.auth': '@gtk3Preset',
-                'class:obsidian': '@electronPreset',
-                'class:zulip': '@electronPreset',
-                'class:slack': '@electronPreset',
-                'class:code': '@electronPreset',
-                'class:mpv': '@electronPreset',
-                'class:spotify': '@electronPreset',
-                'class:discord': '@electronPreset',
-                'class:org.gimp.GIMP': '@gtk3Preset',
-                'class:org.inkscape.Inkscape': '@gtk3Preset',
-                'class:krita': '@qtPreset',
-                'class:qpwgraph': '@qtPreset',
-                'class:foot': { margins: { top: 27 }, maximizedBorder: true },
-                'class:Alacritty': { margins: { top: 36 }, radius: { tl: 12, tr: 12 }, maximizedBorder: true },
+                "regex.class:^org.gnome*": "@gnomePreset",
+                "regex.class:^google-chrome*": "@chromePreset",
+                "regex.class:^chrome-*": "@chromePreset",
+                "class:org.gnome.Terminal": "@gtk3Preset",
+                "class:vlc": "@qtPreset",
+                "class:firefox": "@firefoxPreset",
+                "class:dev.zed.Zed": "@zedPreset",
+                "class:io.ente.auth": "@gtk3Preset",
+                "class:obsidian": "@electronPreset",
+                "class:zulip": "@electronPreset",
+                "class:slack": "@electronPreset",
+                "class:code": "@electronPreset",
+                "class:mpv": {},
+                "class:spotify": "@electronPreset",
+                "class:discord": "@electronPreset",
+                "class:org.gimp.GIMP": "@gtk3Preset",
+                "class:org.inkscape.Inkscape": "@gtk3Preset",
+                "class:krita": "@qtPreset",
+                "class:qpwgraph": "@qtPreset",
+                "class:dconf-editor": "@gtk3Preset",
+                "class:foot": { margins: { top: 27 }, maximizedBorder: true },
+                "class:Alacritty": { margins: { top: 36 }, radius: { tl: 12, tr: 12 }, maximizedBorder: true },
             };
             
             // Save defaults to gsettings
-            this._settings.set_string('app-configs', JSON.stringify(this._savedAppConfigs));
+            this._settings.set_string("app-configs", JSON.stringify(this._savedAppConfigs));
         }
         
         // Build normalized app configs
@@ -140,13 +130,13 @@ export class ConfigManager {
         this.appConfigs = {};
         
         // Create @default config by merging with fallback
-        const defaultRawConfig = this._savedAppConfigs['@default'] || {};
+        const defaultRawConfig = this._savedAppConfigs["@default"] || {};
         const defaultConfig = this.normalizeConfig({ ...this.appConfigFallback, ...defaultRawConfig });
-        this.appConfigs['@default'] = defaultConfig;
+        this.appConfigs["@default"] = defaultConfig;
         
         // Normalize all other configs using @default as base
         for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
-            if (!key.startsWith('@')) {
+            if (!key.startsWith("@")) {
                 this.appConfigs[key] = this.normalizeConfig({ 
                     ...defaultConfig, 
                     ...{ enabled: true }, 
@@ -158,41 +148,41 @@ export class ConfigManager {
     
     _ensureDefaultsSaved() {
         // Check if this is the first run by looking at config-version
-        const configVersion = this._settings.get_int('config-version');
+        const configVersion = this._settings.get_int("config-version");
         
         if (configVersion === 1) {
             // First run - save all default values to make them visible in dconf-editor
-            console.log('[p7-borders] First run detected, saving default configuration values');
+            console.log("[p7-borders] First run detected, saving default configuration values");
             
             // Save all boolean defaults
-            this._settings.set_boolean('radius-enabled', this._settings.get_boolean('radius-enabled'));
-            this._settings.set_boolean('default-maximized-borders', this._settings.get_boolean('default-maximized-borders'));
-            this._settings.set_boolean('default-enabled', this._settings.get_boolean('default-enabled'));
+            this._settings.set_boolean("radius-enabled", this._settings.get_boolean("radius-enabled"));
+            this._settings.set_boolean("default-maximized-borders", this._settings.get_boolean("default-maximized-borders"));
+            this._settings.set_boolean("default-enabled", this._settings.get_boolean("default-enabled"));
             
             // Save all integer defaults
-            this._settings.set_int('default-margins', this._settings.get_int('default-margins'));
-            this._settings.set_int('default-radius', this._settings.get_int('default-radius'));
-            this._settings.set_int('default-width', this._settings.get_int('default-width'));
+            this._settings.set_int("default-margins", this._settings.get_int("default-margins"));
+            this._settings.set_int("default-radius", this._settings.get_int("default-radius"));
+            this._settings.set_int("default-width", this._settings.get_int("default-width"));
             
             // Save all string defaults
-            this._settings.set_string('default-active-color', this._settings.get_string('default-active-color'));
-            this._settings.set_string('default-inactive-color', this._settings.get_string('default-inactive-color'));
-            this._settings.set_string('app-configs', this._settings.get_string('app-configs'));
+            this._settings.set_string("default-active-color", this._settings.get_string("default-active-color"));
+            this._settings.set_string("default-inactive-color", this._settings.get_string("default-inactive-color"));
+            this._settings.set_string("app-configs", this._settings.get_string("app-configs"));
             
             // Update config version to indicate defaults have been saved
-            this._settings.set_int('config-version', 2);
+            this._settings.set_int("config-version", 2);
             
-            console.log('[p7-borders] Default configuration values saved to dconf');
+            console.log("[p7-borders] Default configuration values saved to dconf");
         }
     }
     
     _getAccentColor() {
         // Custom color that works well for all dark and light themes
-        const defaultAccent = 'rgba(51, 153, 230, 0.4)'; 
+        const defaultAccent = "rgba(51, 153, 230, 0.4)"; 
         
         // Check if we should use auto accent color
-        const activeColor = this._settings.get_string('default-active-color');
-        if (activeColor !== 'auto') {
+        const activeColor = this._settings.get_string("default-active-color");
+        if (activeColor !== "auto") {
             return activeColor;
         }
         
@@ -201,19 +191,19 @@ export class ConfigManager {
         }
         
         try {
-            const accentColor = this._interfaceSettings.get_string('accent-color');
+            const accentColor = this._interfaceSettings.get_string("accent-color");
             
             // Map GNOME accent colors to RGBA values with alpha 0.4
             const accentColorMap = {
-                'blue': 'rgba(53, 132, 228, 0.4)',
-                'teal': 'rgba(51, 209, 122, 0.4)', 
-                'green': 'rgba(46, 194, 126, 0.4)',
-                'yellow': 'rgba(248, 228, 92, 0.4)',
-                'orange': 'rgba(255, 120, 0, 0.4)',
-                'red': 'rgba(237, 51, 59, 0.4)',
-                'pink': 'rgba(224, 27, 36, 0.4)',
-                'purple': 'rgba(145, 65, 172, 0.4)',
-                'slate': 'rgba(99, 104, 128, 0.4)',
+                "blue": "rgba(53, 132, 228, 0.4)",
+                "teal": "rgba(51, 209, 122, 0.4)", 
+                "green": "rgba(46, 194, 126, 0.4)",
+                "yellow": "rgba(248, 228, 92, 0.4)",
+                "orange": "rgba(255, 120, 0, 0.4)",
+                "red": "rgba(237, 51, 59, 0.4)",
+                "pink": "rgba(224, 27, 36, 0.4)",
+                "purple": "rgba(145, 65, 172, 0.4)",
+                "slate": "rgba(99, 104, 128, 0.4)",
             };
             
             return accentColorMap[accentColor] || defaultAccent;
@@ -225,13 +215,13 @@ export class ConfigManager {
     // --- GSettings change handling -----------------------------------------
     
     _onSettingChanged(key) {
-        this._initializeDefaults();
-        this._notifyConfigChange('settings-changed');
+        this._init();
+        this._notifyConfigChange("settings-changed");
     }
     
     _onAccentColorChanged() {
-        this._initializeDefaults();
-        this._notifyConfigChange('accent-color');
+        this._init();
+        this._notifyConfigChange("accent-color");
     }
     
     _notifyConfigChange(changeType) {
@@ -239,7 +229,7 @@ export class ConfigManager {
             try {
                 callback(changeType);
             } catch (error) {
-                console.error('[p7-borders] Error in config change callback:', error);
+                console.error("[p7-borders] Error in config change callback:", error);
             }
         }
     }
@@ -268,10 +258,10 @@ export class ConfigManager {
      */
     saveAppConfigs(configs) {
         try {
-            this._settings.set_string('app-configs', JSON.stringify(configs));
-            this._initializeDefaults();
+            this._settings.set_string("app-configs", JSON.stringify(configs));
+            this._init();
         } catch (error) {
-            console.error('[p7-borders] Failed to save app configs:', error);
+            console.error("[p7-borders] Failed to save app configs:", error);
         }
     }
     
@@ -308,7 +298,7 @@ export class ConfigManager {
         const appConfigs = {};
         
         for (const [key, value] of Object.entries(rawConfigs)) {
-            if (key.startsWith('@')) {
+            if (key.startsWith("@")) {
                 presets[key] = value;
             } else {
                 appConfigs[key] = value;
@@ -318,7 +308,7 @@ export class ConfigManager {
         // Resolve preset references in app configs
         const resolvedConfigs = {};
         for (const [key, value] of Object.entries(appConfigs)) {
-            if (typeof value === 'string' && value.startsWith('@')) {
+            if (typeof value === "string" && value.startsWith("@")) {
                 // This is a preset reference
                 const presetConfig = presets[value];
                 if (presetConfig !== undefined) {
@@ -337,8 +327,8 @@ export class ConfigManager {
     }
 
     getConfigForWindow(metaWindow) {
-        const appId = metaWindow.get_gtk_application_id?.() || '';
-        const wmClass = (metaWindow.get_wm_class?.() || '');
+        const appId = metaWindow.get_gtk_application_id?.() || "";
+        const wmClass = (metaWindow.get_wm_class?.() || "");
 
         // Try exact matches first
         const exactMatch = this.appConfigs[`app:${appId}`] || 
@@ -348,24 +338,24 @@ export class ConfigManager {
         
         // Try pattern matches  
         for (const [key, config] of Object.entries(this.appConfigs)) {
-            if (key === '@default' || !key.startsWith('regex.')) continue;
+            if (key === "@default" || !key.startsWith("regex.")) continue;
             
-            if (key.startsWith('regex.app:') && appId && this._matches(appId, key.slice(11))) {
+            if (key.startsWith("regex.app:") && appId && this._matches(appId, key.slice(11))) {
                 return config;
             }
-            if (key.startsWith('regex.class:') && wmClass && this._matches(wmClass, key.slice(13))) {
+            if (key.startsWith("regex.class:") && wmClass && this._matches(wmClass, key.slice(13))) {
                 return config;
             }
         }
         
-        return this.appConfigs['@default'];
+        return this.appConfigs["@default"];
     }
 
     _matches(text, pattern) {
         try {
-            return new RegExp(pattern, 'i').test(text);
+            return new RegExp(pattern, "i").test(text);
         } catch {
-            return false; // Invalid regex patterns don't match
+            return false; // Invalid regex patterns don"t match
         }
     }
 
@@ -378,7 +368,7 @@ export class ConfigManager {
     }
 
     normalizeMargins(margins) {
-        if (typeof margins === 'number') {
+        if (typeof margins === "number") {
             const value = margins | 0;
             return { top: value, right: value, bottom: value, left: value };
         }
@@ -392,7 +382,7 @@ export class ConfigManager {
     }
 
     normalizeRadius(radius) {
-        if (typeof radius === 'number') {
+        if (typeof radius === "number") {
             const value = Math.max(0, radius | 0);
             return { tl: value, tr: value, br: value, bl: value };
         }

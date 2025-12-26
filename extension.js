@@ -1,12 +1,12 @@
 // extension.js
 
-import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
-import St from 'gi://St';
+import GLib from "gi://GLib";
+import Meta from "gi://Meta";
+import St from "gi://St";
 
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import { ConfigManager } from './config.js';
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { ConfigManager } from "./config.js";
 
 export default class WindowBorderExtension extends Extension {
     constructor(metadata) {
@@ -73,7 +73,7 @@ export default class WindowBorderExtension extends Extension {
     }
 
     _syncWindow(metaWindow, border, actor, config) {
-        // If there's already a pending sync for this window, skip this round
+        // If there"s already a pending sync for this window, skip this round
         if (this._pendingSyncs.has(metaWindow)) {
             return;
         }
@@ -86,7 +86,7 @@ export default class WindowBorderExtension extends Extension {
                     const box = actor.get_allocation_box();
                     this._syncBorderToActor(border, actor, box, config, metaWindow);
                 } catch(err) {
-                    console.error(`[p7-borders] Err: ${metaWindow.get_title() || 'untitled'} => ${err}`);
+                    console.error(`[p7-borders] Err: ${metaWindow.get_title() || "untitled"} => ${err}`);
                 }
             }
             return GLib.SOURCE_REMOVE;
@@ -98,7 +98,7 @@ export default class WindowBorderExtension extends Extension {
 
     _syncBorderToActor(border, actor, box, config, metaWindow) {
         const { margins, radius, width: borderWidth } = config;
-        // console.log(`[p7-borders] Syncing border for window: ${metaWindow.get_title() || 'untitled'}`);
+        // console.log(`[p7-borders] Syncing border for window: ${metaWindow.get_title() || "untitled"}`);
 
         // Early return for various states
         const maximizeFlags = metaWindow.get_maximize_flags();
@@ -217,8 +217,8 @@ export default class WindowBorderExtension extends Extension {
         
         this._syncWindow(metaWindow, border, actor, config);
         
-        const windowTitle = metaWindow.get_title() || 'untitled';
-        console.log(`[p7-borders] Updated config: ${windowTitle} (${metaWindow.get_wm_class() || 'unknown class'}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`);
+        const windowTitle = metaWindow.get_title() || "untitled";
+        console.log(`[p7-borders] Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`);
     }
 
     _trackWindow(metaWindow) {
@@ -234,7 +234,7 @@ export default class WindowBorderExtension extends Extension {
             if (this._pendingTrack.has(metaWindow))
                 return;
 
-            const signalId = metaWindow.connect('shown', () => {
+            const signalId = metaWindow.connect("shown", () => {
                 metaWindow.disconnect(signalId);
                 this._pendingTrack.delete(metaWindow);
                 this._trackWindow(metaWindow);
@@ -254,7 +254,7 @@ export default class WindowBorderExtension extends Extension {
             if (this._pendingTrack.has(metaWindow))
                 return;
 
-            const signalId = actor.connect('notify::allocation', () => {
+            const signalId = actor.connect("notify::allocation", () => {
                 const alloc = actor.get_allocation_box();
                 const w = alloc ? alloc.get_width() : 0;
                 const h = alloc ? alloc.get_height() : 0;
@@ -285,18 +285,18 @@ export default class WindowBorderExtension extends Extension {
         const signals = [
             { 
                 object: actor, 
-                id: actor.connect('notify::allocation', () => {
+                id: actor.connect("notify::allocation", () => {
                     const data = this._windowData.get(metaWindow);
                     if (data) this._syncWindow(metaWindow, border, actor, data.config);
                 })
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('unmanaged', () => this._untrackWindow(metaWindow))
+                id: metaWindow.connect("unmanaged", () => this._untrackWindow(metaWindow))
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('notify::fullscreen', () => {
+                id: metaWindow.connect("notify::fullscreen", () => {
                     if (metaWindow.fullscreen) {
                         this._hideBorder(border);
                     } else {
@@ -307,26 +307,26 @@ export default class WindowBorderExtension extends Extension {
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('notify::wm-class', () => this._updateWindowConfig(metaWindow))
+                id: metaWindow.connect("notify::wm-class", () => this._updateWindowConfig(metaWindow))
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('notify::gtk-application-id', () => this._updateWindowConfig(metaWindow))
+                id: metaWindow.connect("notify::gtk-application-id", () => this._updateWindowConfig(metaWindow))
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('notify::title', () => this._updateWindowConfig(metaWindow))
+                id: metaWindow.connect("notify::title", () => this._updateWindowConfig(metaWindow))
             },
             { 
                 object: metaWindow, 
-                id: metaWindow.connect('notify::appears-focused', () => {
+                id: metaWindow.connect("notify::appears-focused", () => {
                     const data = this._windowData.get(metaWindow);
                     if (data) this._syncWindow(metaWindow, border, actor, data.config);
                 })
             }
         ];
 
-        const windowTitle = metaWindow.get_title() || 'untitled';        
+        const windowTitle = metaWindow.get_title() || "untitled";        
         this._windowData.set(metaWindow, {
             border,
             actor,
@@ -334,7 +334,7 @@ export default class WindowBorderExtension extends Extension {
             config,
         });
 
-        console.log(`[p7-borders] Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || 'unknown class'}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`);
+        console.log(`[p7-borders] Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`);
 
         // Initial sync
         this._syncWindow(metaWindow, border, actor, config);
@@ -423,25 +423,25 @@ export default class WindowBorderExtension extends Extension {
     // --- Extension lifecycle -------------------------------------------------
 
     enable() {
-        console.log('[p7-borders] Extension enabled');
+        console.log("[p7-borders] Extension enabled");
         const display = global.display;
 
         this._signals = [
             {
                 object: display,
-                id: display.connect('window-created', (display, metaWindow) => this._onWindowCreated(metaWindow))
+                id: display.connect("window-created", (display, metaWindow) => this._onWindowCreated(metaWindow))
             },
             {
                 object: display,
-                id: display.connect('workareas-changed', () => this._resyncAll())
+                id: display.connect("workareas-changed", () => this._resyncAll())
             },
             {
                 object: Main.layoutManager,
-                id: Main.layoutManager.connect('monitors-changed', () => this._resyncAll())
+                id: Main.layoutManager.connect("monitors-changed", () => this._resyncAll())
             },
             {
                 object: display,
-                id: display.connect('notify::focus-window', () => this._onFocusChanged())
+                id: display.connect("notify::focus-window", () => this._onFocusChanged())
             }
         ];
 
@@ -455,7 +455,7 @@ export default class WindowBorderExtension extends Extension {
     }
 
     disable() {
-        console.log('[p7-borders] Extension disabled');
+        console.log("[p7-borders] Extension disabled");
         
         // Remove config change listener
         if (this._configChangeCallback) {
