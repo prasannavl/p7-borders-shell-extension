@@ -71,54 +71,73 @@ export class ConfigManager {
         // If no saved configs, set up defaults
         if (!this._savedAppConfigs || Object.keys(this._savedAppConfigs).length === 0) {
             this._savedAppConfigs = {
-                "@default": { width: 2 },
+                "@default": { width: 3 },
+                // Presets
+                "@zeroPreset": { maximizedBorder: true },
+                "@zeroNoMaxPreset": { maximizedBorder: false },
                 "@electronPreset": { maximizedBorder: true },
                 "@chromePreset": {
                     margins: { top: -10, right: -16, bottom: -32, left: -16 },
-                    radius: { tl: 12, tr: 12, br: 0, bl: 0 },
+                    radius: { tl: 12, tr: 12, br: 0, bl: 0 }
                 },
-                "@gnomePreset": {
-                    margins: { top: -25, right: -25, bottom: -25, left: -25 },
-                    radius: 18,
+                "@adwPreset": {
+                    margins: -25,
+                    radius: 18
                 },
-                "@gtk3Preset": {
-                    margins: { top: -22, right: -25, bottom: -28, left: -25 },
-                    radius: { tl: 10, tr: 10, br: 0, bl: 0 }
-                },
-                "@firefoxPreset": {
+                "@gtkPreset": {
                     margins: { top: -22, right: -25, bottom: -28, left: -25 },
                     radius: { tl: 10, tr: 10, br: 0, bl: 0 }
                 },
                 "@zedPreset": {
                     margins: { top: -10, right: -11, bottom: -11, left: -10 },
-                    radius: 14,
+                    radius: 14
                 },
                 "@qtPreset": {
                     margins: { top: -25, right: -25, bottom: -24, left: -25 },
-                    radius: { tl: 18, tr: 18, br: 0, bl: 0 },
+                    radius: { tl: 18, tr: 18, br: 0, bl: 0 }
                 },
-                "regex.class:^org.gnome*": "@gnomePreset",
+                // Adw
+                "regex.class:^org.gnome.*": "@adwPreset",
+                "regex.class:^org.freedesktop.*": "@adwPreset",
+                "class:com.github.tchx84.Flatseal": "@adwPreset",
+                "class:simple-scan": "@adwPreset",
+                "class:re.sonny.Workbench": "@adwPreset",
+                // Gtk
+                "class:org.gnome.Terminal": "@gtkPreset",
+                "class:firefox": "@gtkPreset",
+                "class:io.ente.auth": "@gtkPreset",
+                "class:dconf-editor": "@gtkPreset",
+                "class:org.gimp.GIMP": "@gtkPreset",
+                "class:org.inkscape.Inkscape": "@gtkPreset",
+                "class:system-config-printer": "@gtkPreset",
+                "class:libreoffice-calc": "@gtkPreset",
+                "class:libreoffice-writer": "@gtkPreset",
+                "class:libreoffice-impress": "@gtkPreset",
+                "class:libreoffice-draw": "@gtkPreset",
+                // Chrome 
                 "regex.class:^google-chrome*": "@chromePreset",
                 "regex.class:^chrome-*": "@chromePreset",
-                "class:org.gnome.Terminal": "@gtk3Preset",
-                "class:vlc": "@qtPreset",
-                "class:firefox": "@firefoxPreset",
-                "class:dev.zed.Zed": "@zedPreset",
-                "class:io.ente.auth": "@gtk3Preset",
+                // Electron
                 "class:obsidian": "@electronPreset",
                 "class:zulip": "@electronPreset",
                 "class:slack": "@electronPreset",
                 "class:code": "@electronPreset",
-                "class:mpv": {},
                 "class:spotify": "@electronPreset",
                 "class:discord": "@electronPreset",
-                "class:org.gimp.GIMP": "@gtk3Preset",
-                "class:org.inkscape.Inkscape": "@gtk3Preset",
+                // Qt
+                "class:vlc": "@qtPreset",
                 "class:krita": "@qtPreset",
                 "class:qpwgraph": "@qtPreset",
-                "class:dconf-editor": "@gtk3Preset",
+                // Others
+                "class:dev.zed.Zed": "@zedPreset",
+                "class:mpv": "@zeroPreset",
+                // Custom
                 "class:foot": { margins: { top: 27 }, maximizedBorder: true },
-                "class:Alacritty": { margins: { top: 36 }, radius: { tl: 12, tr: 12 }, maximizedBorder: true },
+                "class:Alacritty": {
+                    margins: { top: 36 },
+                    radius: { tl: 12, tr: 12 },
+                    maximizedBorder: true
+                }
             };
             
             // Save defaults to gsettings
