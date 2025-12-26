@@ -1,4 +1,4 @@
-GNOME Extension that adds window borders to windows based on config efficiently.
+# GNOME Extension that adds window borders to windows based on config efficiently
 
 - Adds a **per-window border** as a child of MetaWindowActor
   
@@ -27,7 +27,6 @@ GNOME Extension that adds window borders to windows based on config efficiently.
 Compatibility:
 
 - GNOME 48, 49 in particular.
-
 
 Programming styles:
 

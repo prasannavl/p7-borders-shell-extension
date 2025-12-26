@@ -1,12 +1,13 @@
 // extension.js
 
 import GLib from "gi://GLib";
-import Meta from "gi://Meta";
 import St from "gi://St";
+import Meta from "gi://Meta";
 
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { ConfigManager } from "./config.js";
+import { applyBorderState, getMaximizeState, getWindowState } from "./compat.js";
 
 export default class P7BordersExtension extends Extension {
     constructor(metadata) {
@@ -97,105 +98,26 @@ export default class P7BordersExtension extends Extension {
     // --- Core geometry + style sync -----------------------------------------
 
     _syncBorderToActor(border, actor, box, config, metaWindow) {
-        const { margins, radius, width: borderWidth } = config;
-        // console.log(`[p7-borders] Syncing border for window: ${metaWindow.get_title() || "untitled"}`);
+        const maximize = getMaximizeState(metaWindow);
 
-        // Early return for various states
-        const maximizeFlags = metaWindow.get_maximize_flags();
-        const isAnyMaximized = maximizeFlags !== 0;
-        
-        if (metaWindow.fullscreen || 
-            maximizeFlags === Meta.MaximizeFlags.BOTH || 
-            (!config.maximizedBorder && isAnyMaximized) ||
-            !borderWidth || 
+        if (metaWindow.fullscreen ||
+            maximize.full ||
+            (!config.maximizedBorder && maximize.any) ||
+            !config.width ||
             !config.enabled) {
-            this._hideBorder(border);
+            applyBorderState(border, { visible: false });
             return;
         }
 
-        const width = box.x2 - box.x1;
-        const height = box.y2 - box.y1;
-        if (width <= 0 || height <= 0) {
-            this._hideBorder(border);
-            return;
-        }
+        const windowState = getWindowState(metaWindow, actor, box, maximize);
+        const policyState = computeBorderState({
+            ...windowState,
+            config,
+            radiusEnabled: this.configManager.radiusEnabled,
+        });
 
-        // Get frame and workarea with fallback
-        let frame, workarea;
-        try {
-            frame = metaWindow.get_frame_rect();
-            workarea = metaWindow.get_work_area_current_monitor?.() || 
-                      global.display.get_monitor_workarea(metaWindow.get_monitor());
-        } catch {
-            workarea = global.display.get_monitor_workarea(metaWindow.get_monitor() || 0);
-            frame = { x: actor.x, y: actor.y, width, height };
-        }
-
-        // Edge snapping detection (within 2px tolerance)
-        const EPS = 2;
-        const edges = {
-            left: Math.abs(frame.x - workarea.x) <= EPS,
-            right: Math.abs((frame.x + frame.width) - (workarea.x + workarea.width)) <= EPS,
-            top: Math.abs(frame.y - workarea.y) <= EPS,
-            bottom: Math.abs((frame.y + frame.height) - (workarea.y + workarea.height)) <= EPS
-        };
-
-        // Only border widths are affected by edge snapping
-        const borderWidths = {
-            top: edges.top ? 0 : config.width,
-            right: edges.right ? 0 : config.width,
-            bottom: edges.bottom ? 0 : config.width,
-            left: edges.left ? 0 : config.width
-        };
-
-        // Check if window has any maximize flags set (we already have maximizeFlags from above)
-        const isMaximized = maximizeFlags === Meta.MaximizeFlags.HORIZONTAL || maximizeFlags === Meta.MaximizeFlags.VERTICAL;
-
-        // Only radius is affected by edge snapping
-        // If any maximize flags are set, make all border radius 0
-        // Otherwise, only remove radius from corners that are actually touching edges
-        // Also check if radius is globally enabled
-        const effRadius = (!this.configManager.radiusEnabled || isMaximized) ? {
-            tl: 0, tr: 0, br: 0, bl: 0
-        } : {
-            tl: (edges.top && edges.left) ? 0 : radius.tl,
-            tr: (edges.top && edges.right) ? 0 : radius.tr,
-            br: (edges.bottom && edges.right) ? 0 : radius.br,
-            bl: (edges.bottom && edges.left) ? 0 : radius.bl
-        };
-
-        // Position and size calculation
-        // Border width always extends outside the window
-        // Positive margins: extend border further outside the window 
-        // Negative margins: bring border inside the window
-        const posX = -margins.left - borderWidths.left;
-        const posY = -margins.top - borderWidths.top;
-        border.set_position(posX, posY);
-
-        // Border element size: window size + margins + border widths on both sides
-        const sizeW = Math.max(1, width + margins.left + margins.right + borderWidths.left + borderWidths.right);
-        const sizeH = Math.max(1, height + margins.top + margins.bottom + borderWidths.top + borderWidths.bottom);
-        border.set_size(sizeW, sizeH);
-
-        // Style application with caching
-        const isActive = metaWindow === global.display.focus_window;
-        const borderColor = isActive ? config.activeColor : config.inactiveColor;
-        const styleKey = `${borderWidths.top},${borderWidths.right},${borderWidths.bottom},${borderWidths.left}|${effRadius.tl},${effRadius.tr},${effRadius.br},${effRadius.bl}|${borderColor}`;
-        
-        if (border._lastStyleKey !== styleKey) {
-            border._lastStyleKey = styleKey;
-            const styleString = 
-                `border-top-width: ${borderWidths.top}px;` +
-                `border-right-width: ${borderWidths.right}px;` +
-                `border-bottom-width: ${borderWidths.bottom}px;` +
-                `border-left-width: ${borderWidths.left}px;` +
-                `border-radius: ${effRadius.tl}px ${effRadius.tr}px ${effRadius.br}px ${effRadius.bl}px;` +
-                `border-style: solid;` +
-                `border-color: ${borderColor};` +
-                `background: transparent;`;
-            border.set_style(styleString);
-        }
-        border.visible = true;
+        const borderColor = windowState.isFocused ? config.activeColor : config.inactiveColor;
+        applyBorderState(border, policyState, borderColor);
     }
 
     // --- Per-window lifecycle -----------------------------------------------
@@ -513,4 +435,72 @@ export default class P7BordersExtension extends Extension {
         for (const [win] of this._windowData.entries())
             this._untrackWindow(win);
     }
+}
+
+
+function computeBorderState({
+    actorSize,
+    frame,
+    workarea,
+    config,
+    isFullscreen,
+    maximize,
+    radiusEnabled,
+}) {
+    const { margins, radius, width: borderWidth } = config;
+
+    if (isFullscreen ||
+        maximize.full ||
+        (!config.maximizedBorder && maximize.any) ||
+        !borderWidth ||
+        !config.enabled) {
+        return { visible: false };
+    }
+
+    const { width, height } = actorSize;
+    if (width <= 0 || height <= 0) {
+        return { visible: false };
+    }
+
+    const EPS = 2;
+    const edges = {
+        left: Math.abs(frame.x - workarea.x) <= EPS,
+        right: Math.abs((frame.x + frame.width) - (workarea.x + workarea.width)) <= EPS,
+        top: Math.abs(frame.y - workarea.y) <= EPS,
+        bottom: Math.abs((frame.y + frame.height) - (workarea.y + workarea.height)) <= EPS,
+    };
+
+    const borderWidths = {
+        top: edges.top ? 0 : borderWidth,
+        right: edges.right ? 0 : borderWidth,
+        bottom: edges.bottom ? 0 : borderWidth,
+        left: edges.left ? 0 : borderWidth,
+    };
+
+    const effRadius = (!radiusEnabled || maximize.any) ? {
+        tl: 0, tr: 0, br: 0, bl: 0,
+    } : {
+        tl: (edges.top && edges.left) ? 0 : radius.tl,
+        tr: (edges.top && edges.right) ? 0 : radius.tr,
+        br: (edges.bottom && edges.right) ? 0 : radius.br,
+        bl: (edges.bottom && edges.left) ? 0 : radius.bl,
+    };
+
+    const pos = {
+        x: -margins.left - borderWidths.left,
+        y: -margins.top - borderWidths.top,
+    };
+
+    const size = {
+        width: Math.max(1, width + margins.left + margins.right + borderWidths.left + borderWidths.right),
+        height: Math.max(1, height + margins.top + margins.bottom + borderWidths.top + borderWidths.bottom),
+    };
+
+    return {
+        visible: true,
+        borderWidths,
+        radius: effRadius,
+        pos,
+        size,
+    };
 }
