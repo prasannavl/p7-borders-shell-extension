@@ -412,7 +412,7 @@ export default class P7BordersExtension extends Extension {
         this._signals = [];
 
         // Cancel all pending syncs
-        for (const [win, syncId] of this._pendingSyncs.entries()) {
+        for (const [_win, syncId] of this._pendingSyncs.entries()) {
             GLib.Source.remove(syncId);
         }
         this._pendingSyncs.clear();

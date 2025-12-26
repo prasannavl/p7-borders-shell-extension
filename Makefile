@@ -6,7 +6,7 @@ JS_FILES := $(wildcard *.js)
 .PHONY: lint schemas pack install enable disable reload clean
 
 lint:
-	gjslint $(JS_FILES)
+	biome lint $(JS_FILES)
 
 schemas:
 	glib-compile-schemas $(SCHEMAS_DIR)

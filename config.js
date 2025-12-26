@@ -234,7 +234,7 @@ export class ConfigManager {
     
     // --- GSettings change handling -----------------------------------------
     
-    _onSettingChanged(key) {
+    _onSettingChanged(_key) {
         this._init();
         this._notifyConfigChange("settings-changed");
     }
@@ -293,7 +293,7 @@ export class ConfigManager {
         for (const connectionId of this._settingsConnections) {
             try {
                 this._settings.disconnect(connectionId);
-            } catch (error) {
+            } catch (_error) {
                 // Signal might already be disconnected
             }
         }
@@ -302,7 +302,7 @@ export class ConfigManager {
             for (const connectionId of this._settingsConnections) {
                 try {
                     this._interfaceSettings.disconnect(connectionId);
-                } catch (error) {
+                } catch (_error) {
                     // Signal might already be disconnected
                 }
             }
