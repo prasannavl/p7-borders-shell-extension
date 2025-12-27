@@ -88,9 +88,9 @@ export default class P7BordersExtension extends Extension {
 					const box = actor.get_allocation_box();
 					this._syncBorderToActor(border, actor, box, config, metaWindow);
 				} catch (err) {
-					       logger.error(
-						       `Err: ${metaWindow.get_title() || "untitled"} => ${err}`,
-					       );
+					logger.error(
+						`Err: ${metaWindow.get_title() || "untitled"} => ${err}`,
+					);
 				}
 			}
 			return GLib.SOURCE_REMOVE;
@@ -147,9 +147,9 @@ export default class P7BordersExtension extends Extension {
 		this._syncWindow(metaWindow, border, actor, config);
 
 		const windowTitle = metaWindow.get_title() || "untitled";
-		       logger.log(
-			       `Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
-		       );
+		logger.log(
+			`Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
+		);
 	}
 
 	_trackWindow(metaWindow) {
@@ -277,9 +277,9 @@ export default class P7BordersExtension extends Extension {
 			config,
 		});
 
-		       logger.log(
-			       `Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
-		       );
+		logger.log(
+			`Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
+		);
 
 		// Initial sync
 		this._syncWindow(metaWindow, border, actor, config);
@@ -405,15 +405,15 @@ export default class P7BordersExtension extends Extension {
 	// --- Extension lifecycle -------------------------------------------------
 
 	enable() {
-			   logger.log("Extension enabled");
+		logger.log("Extension enabled");
 		const display = global.display;
 
 		// Recreate config manager on each enable (extension object persists)
 		this.configManager = new ConfigManager(this.getSettings());
-		       this._configChangeCallback = (changeType) => {
-			       logger.log(`Config changed: ${changeType}`);
-			       this._onConfigChanged(changeType);
-		       };
+		this._configChangeCallback = (changeType) => {
+			logger.log(`Config changed: ${changeType}`);
+			this._onConfigChanged(changeType);
+		};
 		this.configManager.addConfigChangeListener(this._configChangeCallback);
 
 		this._signals = [
@@ -450,7 +450,7 @@ export default class P7BordersExtension extends Extension {
 	}
 
 	disable() {
-			   logger.log("Extension disabled");
+		logger.log("Extension disabled");
 
 		// Remove config change listener
 		if (this._configChangeCallback && this.configManager) {
