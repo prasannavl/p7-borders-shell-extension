@@ -291,7 +291,7 @@ export class ConfigManager {
 			try {
 				callback(changeType);
 			} catch (error) {
-				console.error("[p7-borders] Error in config change callback:", error);
+				logger.error("Error in config change callback:", error);
 			}
 		}
 	}
@@ -323,7 +323,7 @@ export class ConfigManager {
 			this._settings.set_string("app-configs", JSON.stringify(configs));
 			this._init();
 		} catch (error) {
-			console.error("[p7-borders] Failed to save app configs:", error);
+			logger.error("Failed to save app configs:", error);
 		}
 	}
 
@@ -376,9 +376,7 @@ export class ConfigManager {
 				if (presetConfig !== undefined) {
 					resolvedConfigs[key] = presetConfig;
 				} else {
-					console.warn(
-						`[p7-borders] Unknown preset reference: ${value} for ${key}`,
-					);
+					logger.warn(`Unknown preset reference: ${value} for ${key}`);
 					resolvedConfigs[key] = {};
 				}
 			} else {
