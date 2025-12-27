@@ -7,15 +7,15 @@ class Logger {
 	}
 
 	log(...args) {
-		global.log(`[${this.prefix}]`, ...args);
+		console.log(`[${this.prefix}]`, ...args);
 	}
 
 	warn(...args) {
-		global.logWarning(`[${this.prefix}]`, ...args);
+		console.warn(`[${this.prefix}]`, ...args);
 	}
 
 	error(...args) {
-		global.logError(`[${this.prefix}]`, ...args);
+		console.error(`[${this.prefix}]`, ...args);
 	}
 }
 
