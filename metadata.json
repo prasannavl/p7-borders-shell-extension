@@ -3,5 +3,6 @@
   "description": "Add window borders to GNOME windows",
   "uuid": "p7-borders@prasannavl.com",
   "shell-version": ["48", "49" ],
-  "settings-schema": "org.gnome.shell.extensions.p7-borders"
+  "settings-schema": "org.gnome.shell.extensions.p7-borders",
+  "version": 1
 }
