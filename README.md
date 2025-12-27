@@ -25,6 +25,13 @@ Compatibility: GNOME Shell 48 and 49.
     <td><img src="docs/assets/screenshot-2.png" alt="Screenshot 2" width="350"/></td>
     <td><img src="docs/assets/screenshot-3.png" alt="Screenshot 3" width="350"/></td>
   </tr>
+  <tr>
+    <td><img src="docs/assets/screenshot-4.png" alt="Screenshot 2" width="350"/></td>
+    <td><img src="docs/assets/screenshot-5.png" alt="Screenshot 3" width="350"/></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshot-6.png" alt="Screenshot 2" width="350"/></td>
+  </tr>
 </table>
 
 ## Install
