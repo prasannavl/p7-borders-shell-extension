@@ -2,7 +2,11 @@
   "name": "p7 Window Borders",
   "description": "Add window borders to GNOME windows",
   "uuid": "p7-borders@prasannavl.com",
+  "url": "https://github.com/prasannavl/p7-borders-shell-extension",
   "shell-version": ["48", "49" ],
   "settings-schema": "org.gnome.shell.extensions.p7-borders",
+  "donations": {
+    "github": "prasannavl"
+  },
   "version": 1
 }
