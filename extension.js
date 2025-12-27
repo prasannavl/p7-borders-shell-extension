@@ -523,13 +523,16 @@ function computeBorderState({
 	}
 
 	const EPS = 2;
+	const edgeThreshold = Math.max(EPS, borderWidth);
 	const edges = {
-		left: Math.abs(frame.x - workarea.x) <= EPS,
+		left: Math.abs(frame.x - workarea.x) <= edgeThreshold,
 		right:
-			Math.abs(frame.x + frame.width - (workarea.x + workarea.width)) <= EPS,
-		top: Math.abs(frame.y - workarea.y) <= EPS,
+			Math.abs(frame.x + frame.width - (workarea.x + workarea.width)) <=
+			edgeThreshold,
+		top: Math.abs(frame.y - workarea.y) <= edgeThreshold,
 		bottom:
-			Math.abs(frame.y + frame.height - (workarea.y + workarea.height)) <= EPS,
+			Math.abs(frame.y + frame.height - (workarea.y + workarea.height)) <=
+			edgeThreshold,
 	};
 
 	const borderWidths = {
