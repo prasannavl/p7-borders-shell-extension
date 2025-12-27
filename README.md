@@ -1,4 +1,4 @@
-# p7 Borders (GNOME Shell extension)
+# P7 Borders (GNOME Shell extension)
 
 Add per-window borders in GNOME Shell with per-side margins, per-corner radii,
 and edge-aware hiding. Borders are attached to each window actor and updated
