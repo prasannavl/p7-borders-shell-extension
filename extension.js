@@ -33,14 +33,9 @@ export default class P7BordersExtension extends Extension {
         /** @type {Meta.Window | null} */
         this._lastFocusedWindow = null;
         
-        this.configManager = new ConfigManager(this.getSettings());
-        
-        // Listen for config changes and update all windows
-        this._configChangeCallback = (changeType) => {
-            console.log(`[p7-borders] Config changed: ${changeType}`);
-            this._onConfigChanged(changeType);
-        };
-        this.configManager.addConfigChangeListener(this._configChangeCallback);
+        /** @type {ConfigManager | null} */
+        this.configManager = null;
+        this._configChangeCallback = null;
     }
 
     // --- Helpers ------------------------------------------------------------
@@ -367,6 +362,14 @@ export default class P7BordersExtension extends Extension {
         console.log("[p7-borders] Extension enabled");
         const display = global.display;
 
+        // Recreate config manager on each enable (extension object persists)
+        this.configManager = new ConfigManager(this.getSettings());
+        this._configChangeCallback = (changeType) => {
+            console.log(`[p7-borders] Config changed: ${changeType}`);
+            this._onConfigChanged(changeType);
+        };
+        this.configManager.addConfigChangeListener(this._configChangeCallback);
+
         this._signals = [
             {
                 object: display,
@@ -399,12 +402,16 @@ export default class P7BordersExtension extends Extension {
         console.log("[p7-borders] Extension disabled");
         
         // Remove config change listener
-        if (this._configChangeCallback) {
+        if (this._configChangeCallback && this.configManager) {
             this.configManager.removeConfigChangeListener(this._configChangeCallback);
         }
         
         // Clean up config manager
-        this.configManager.destroy();
+        if (this.configManager) {
+            this.configManager.destroy();
+            this.configManager = null;
+        }
+        this._configChangeCallback = null;
         // Disconnect all extension signals
         for (const {object, id} of this._signals) {
             object.disconnect(id);
