@@ -10,6 +10,9 @@ EXTRA_SOURCE_ARGS := $(foreach f,$(EXTRA_SOURCES),--extra-source=$(f))
 lint:
 	biome lint $(JS_FILES)
 
+fmt:
+	biome format --fix $(JS_FILES)
+
 schemas:
 	glib-compile-schemas $(SCHEMAS_DIR)
 
@@ -20,7 +23,7 @@ version:
 	sed -E "s/\"version\": [0-9]+/\"version\": $$new/" metadata.json > $$tmp && mv $$tmp metadata.json; \
 	echo "version $$new"
 
-pack: schemas
+pack: schemas fmt
 	mkdir -p $(DIST_DIR)
 	gnome-extensions pack --force --out-dir $(DIST_DIR) $(EXTRA_SOURCE_ARGS)
 
