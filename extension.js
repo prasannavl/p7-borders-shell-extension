@@ -1,13 +1,12 @@
 // extension.js
 
 import GLib from "gi://GLib";
-import St from "gi://St";
 import Meta from "gi://Meta";
-
-import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
+import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { ConfigManager } from "./config.js";
 import { applyBorderState, getMaximizeState, getWindowState } from "./compat.js";
+import { ConfigManager } from "./config.js";
+import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
 export default class P7BordersExtension extends Extension {
     constructor(metadata) {

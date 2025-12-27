@@ -1,4 +1,8 @@
-// gnome_adapter.js
+// compat.js
+// The file used for gnome compat API.
+
+// GNOME constantly has breaking changes and it's not fun to keep up with these
+// changes. This file abstracts away some of these differences.
 
 import Meta from "gi://Meta";
 
@@ -95,9 +99,9 @@ export function applyBorderState(border, state, borderColor) {
             `border-bottom-width: ${borderWidths.bottom}px;` +
             `border-left-width: ${borderWidths.left}px;` +
             `border-radius: ${radius.tl}px ${radius.tr}px ${radius.br}px ${radius.bl}px;` +
-            `border-style: solid;` +
+            "border-style: solid;" +
             `border-color: ${borderColor};` +
-            `background: transparent;`;
+            "background: transparent;";
         border.set_style(styleString);
     }
 
