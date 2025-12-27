@@ -1,6 +1,7 @@
 // config.js
 
 import Gio from "gi://Gio";
+import logger from "./utils.js";
 
 export class ConfigManager {
 	constructor(settings) {
@@ -14,10 +15,7 @@ export class ConfigManager {
 				schema_id: "org.gnome.desktop.interface",
 			});
 		} catch (error) {
-			console.log(
-				"[p7-borders] Interface settings not available:",
-				error.message,
-			);
+			logger.log("Interface settings not available:", error.message);
 		}
 
 		// Callbacks for config changes
@@ -71,7 +69,7 @@ export class ConfigManager {
 			try {
 				this._savedAppConfigs = JSON.parse(savedConfigs);
 			} catch (error) {
-				console.warn("[p7-borders] Failed to parse saved app configs:", error);
+				logger.warn("Failed to parse saved app configs:", error);
 				this._savedAppConfigs = {};
 			}
 		}
@@ -189,9 +187,7 @@ export class ConfigManager {
 
 		if (configVersion === 1) {
 			// First run - save all default values to make them visible in dconf-editor
-			console.log(
-				"[p7-borders] First run detected, saving default configuration values",
-			);
+			logger.log("First run detected, saving default configuration values");
 
 			// Save all boolean defaults
 			this._settings.set_boolean(
@@ -238,7 +234,7 @@ export class ConfigManager {
 			// Update config version to indicate defaults have been saved
 			this._settings.set_int("config-version", 2);
 
-			console.log("[p7-borders] Default configuration values saved to dconf");
+			logger.log("Default configuration values saved to dconf");
 		}
 	}
 

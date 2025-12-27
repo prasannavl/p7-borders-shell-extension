@@ -10,6 +10,7 @@ import {
 	getWindowState,
 } from "./compat.js";
 import { ConfigManager } from "./config.js";
+import logger from "./utils.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
 export default class P7BordersExtension extends Extension {
@@ -87,9 +88,9 @@ export default class P7BordersExtension extends Extension {
 					const box = actor.get_allocation_box();
 					this._syncBorderToActor(border, actor, box, config, metaWindow);
 				} catch (err) {
-					console.error(
-						`[p7-borders] Err: ${metaWindow.get_title() || "untitled"} => ${err}`,
-					);
+					       logger.error(
+						       `Err: ${metaWindow.get_title() || "untitled"} => ${err}`,
+					       );
 				}
 			}
 			return GLib.SOURCE_REMOVE;
@@ -146,9 +147,9 @@ export default class P7BordersExtension extends Extension {
 		this._syncWindow(metaWindow, border, actor, config);
 
 		const windowTitle = metaWindow.get_title() || "untitled";
-		console.log(
-			`[p7-borders] Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
-		);
+		       logger.log(
+			       `Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
+		       );
 	}
 
 	_trackWindow(metaWindow) {
@@ -276,9 +277,9 @@ export default class P7BordersExtension extends Extension {
 			config,
 		});
 
-		console.log(
-			`[p7-borders] Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
-		);
+		       logger.log(
+			       `Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
+		       );
 
 		// Initial sync
 		this._syncWindow(metaWindow, border, actor, config);
@@ -404,15 +405,15 @@ export default class P7BordersExtension extends Extension {
 	// --- Extension lifecycle -------------------------------------------------
 
 	enable() {
-		console.log("[p7-borders] Extension enabled");
+			   logger.log("Extension enabled");
 		const display = global.display;
 
 		// Recreate config manager on each enable (extension object persists)
 		this.configManager = new ConfigManager(this.getSettings());
-		this._configChangeCallback = (changeType) => {
-			console.log(`[p7-borders] Config changed: ${changeType}`);
-			this._onConfigChanged(changeType);
-		};
+		       this._configChangeCallback = (changeType) => {
+			       logger.log(`Config changed: ${changeType}`);
+			       this._onConfigChanged(changeType);
+		       };
 		this.configManager.addConfigChangeListener(this._configChangeCallback);
 
 		this._signals = [
@@ -449,7 +450,7 @@ export default class P7BordersExtension extends Extension {
 	}
 
 	disable() {
-		console.log("[p7-borders] Extension disabled");
+			   logger.log("Extension disabled");
 
 		// Remove config change listener
 		if (this._configChangeCallback && this.configManager) {
