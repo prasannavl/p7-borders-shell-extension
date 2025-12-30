@@ -21,7 +21,7 @@ export class BorderManager {
 		 * }>} */
 		this._windowData = new Map();
 
-		/** @type {Map<Meta.Window, number>} */
+		/** @type {Map<Meta.Window, {object: any, id: number}>} */
 		this._pendingTrack = new Map();
 
 		/** @type {Map<Meta.Window, number>} */
@@ -84,14 +84,8 @@ export class BorderManager {
 		const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 			this._pendingSyncs.delete(metaWindow);
 			if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
-				try {
-					const box = actor.get_allocation_box();
-					this._syncBorderToActor(border, actor, box, config, metaWindow);
-				} catch (err) {
-					this._logger.error(
-						`Err: ${metaWindow.get_title() || "untitled"} => ${err}`,
-					);
-				}
+				const box = actor.get_allocation_box();
+				this._syncBorderToActor(border, actor, box, config, metaWindow);
 			}
 			return GLib.SOURCE_REMOVE;
 		});
@@ -168,7 +162,7 @@ export class BorderManager {
 				this._trackWindow(metaWindow);
 			});
 
-			this._pendingTrack.set(metaWindow, signalId);
+			this._pendingTrack.set(metaWindow, { object: metaWindow, id: signalId });
 			return;
 		}
 
@@ -192,7 +186,7 @@ export class BorderManager {
 				}
 			});
 
-			this._pendingTrack.set(metaWindow, signalId);
+			this._pendingTrack.set(metaWindow, { object: actor, id: signalId });
 			return;
 		}
 
@@ -289,18 +283,8 @@ export class BorderManager {
 		// Cancel pending signal tracking
 		const pending = this._pendingTrack.get(metaWindow);
 		if (pending) {
-			// Try disconnecting from both window and actor since we use both
-			try {
-				if (metaWindow && !metaWindow.is_destroyed?.()) {
-					metaWindow.disconnect(pending);
-				}
-			} catch {}
-			try {
-				const actor = metaWindow?.get_compositor_private?.();
-				if (actor && !actor.is_destroyed?.()) {
-					actor.disconnect(pending);
-				}
-			} catch {}
+			const { object, id } = pending;
+			if (object && !object.is_destroyed?.()) object.disconnect(id);
 			this._pendingTrack.delete(metaWindow);
 		}
 
@@ -319,25 +303,19 @@ export class BorderManager {
 
 		// Disconnect all signals with disposal guards
 		for (const { object, id } of signals) {
-			try {
-				if (object && !object.is_destroyed?.()) {
-					object.disconnect(id);
-				}
-			} catch {}
+			if (object && !object.is_destroyed?.()) object.disconnect(id);
 		}
 
 		// Remove border from actor with disposal guards
-		try {
-			if (
-				border &&
-				!border.is_destroyed?.() &&
-				actor &&
-				!actor.is_destroyed?.() &&
-				border.get_parent?.() === actor
-			) {
-				actor.remove_child(border);
-			}
-		} catch {}
+		if (
+			border &&
+			!border.is_destroyed?.() &&
+			actor &&
+			!actor.is_destroyed?.() &&
+			border.get_parent?.() === actor
+		) {
+			actor.remove_child(border);
+		}
 
 		this._windowData.delete(metaWindow);
 	}
@@ -462,19 +440,8 @@ export class BorderManager {
 		this._pendingSyncs.clear();
 
 		// Cancel pending signal tracking
-		for (const [win, signalId] of this._pendingTrack.entries()) {
-			// Try disconnecting from both window and actor since we use both
-			try {
-				if (win && !win.is_destroyed?.()) {
-					win.disconnect(signalId);
-				}
-			} catch {}
-			try {
-				const actor = win?.get_compositor_private?.();
-				if (actor && !actor.is_destroyed?.()) {
-					actor.disconnect(signalId);
-				}
-			} catch {}
+		for (const [win, { object, id }] of this._pendingTrack.entries()) {
+			if (object && !object.is_destroyed?.()) object.disconnect(id);
 			this._pendingTrack.delete(win);
 		}
 
