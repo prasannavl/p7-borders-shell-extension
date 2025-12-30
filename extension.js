@@ -10,7 +10,6 @@ import {
 	getWindowState,
 } from "./compat.js";
 import { ConfigManager } from "./config.js";
-import logger from "./utils.js";
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
 
 export default class P7BordersExtension extends Extension {
@@ -40,6 +39,7 @@ export default class P7BordersExtension extends Extension {
 		/** @type {ConfigManager | null} */
 		this.configManager = null;
 		this._configChangeCallback = null;
+		this._logger = this.getLogger();
 	}
 
 	// --- Helpers ------------------------------------------------------------
@@ -88,7 +88,7 @@ export default class P7BordersExtension extends Extension {
 					const box = actor.get_allocation_box();
 					this._syncBorderToActor(border, actor, box, config, metaWindow);
 				} catch (err) {
-					logger.error(
+					this._logger.error(
 						`Err: ${metaWindow.get_title() || "untitled"} => ${err}`,
 					);
 				}
@@ -147,7 +147,7 @@ export default class P7BordersExtension extends Extension {
 		this._syncWindow(metaWindow, border, actor, config);
 
 		const windowTitle = metaWindow.get_title() || "untitled";
-		logger.log(
+		this._logger.log(
 			`Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
 		);
 	}
@@ -277,7 +277,7 @@ export default class P7BordersExtension extends Extension {
 			config,
 		});
 
-		logger.log(
+		this._logger.log(
 			`Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
 		);
 
@@ -405,13 +405,13 @@ export default class P7BordersExtension extends Extension {
 	// --- Extension lifecycle -------------------------------------------------
 
 	enable() {
-		logger.log("Extension enabled");
+		this._logger.log("Extension enabled");
 		const display = global.display;
 
 		// Recreate config manager on each enable (extension object persists)
-		this.configManager = new ConfigManager(this.getSettings());
+		this.configManager = new ConfigManager(this.getSettings(), this._logger);
 		this._configChangeCallback = (changeType) => {
-			logger.log(`Config changed: ${changeType}`);
+			this._logger.log(`Config changed: ${changeType}`);
 			this._onConfigChanged(changeType);
 		};
 		this.configManager.addConfigChangeListener(this._configChangeCallback);
@@ -450,7 +450,7 @@ export default class P7BordersExtension extends Extension {
 	}
 
 	disable() {
-		logger.log("Extension disabled");
+		this._logger.log("Extension disabled");
 
 		// Remove config change listener
 		if (this._configChangeCallback && this.configManager) {

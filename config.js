@@ -1,12 +1,11 @@
 // config.js
 
 import Gio from "gi://Gio";
-import logger from "./utils.js";
-
 export class ConfigManager {
-	constructor(settings) {
+	constructor(settings, logger) {
 		// Use the settings object provided by Extension.getSettings()
 		this._settings = settings;
+		this._logger = logger;
 
 		// Interface settings for accent color detection
 		this._interfaceSettings = null;
@@ -15,7 +14,7 @@ export class ConfigManager {
 				schema_id: "org.gnome.desktop.interface",
 			});
 		} catch (error) {
-			logger.log("Interface settings not available:", error.message);
+			this._logger.log("Interface settings not available:", error.message);
 		}
 
 		// Callbacks for config changes
@@ -69,16 +68,21 @@ export class ConfigManager {
 			try {
 				this._savedAppConfigs = JSON.parse(savedConfigs);
 			} catch (error) {
-				logger.warn("Failed to parse saved app configs:", error);
+				this._logger.warn("Failed to parse saved app configs:", error);
 				this._savedAppConfigs = {};
 			}
 		}
 
-		// If no saved configs, set up defaults
+
 		if (
 			!this._savedAppConfigs ||
 			Object.keys(this._savedAppConfigs).length === 0
 		) {
+			// If no saved configs, we use the fallback which also happen to be 
+			// defaults here. We have it in code instead of file to avoid unnecessary 
+			// json read, as it's meant to be the infallible fallback.
+			// This should only happen on first run, and then gsettings
+			// should be the single source of truth.
 			this._savedAppConfigs = {
 				"@default": { width: 3 },
 				// Presets
@@ -150,7 +154,7 @@ export class ConfigManager {
 				},
 			};
 
-			// Save defaults to gsettings
+			// Save it to gsettings
 			this._settings.set_string(
 				"app-configs",
 				JSON.stringify(this._savedAppConfigs),
@@ -187,7 +191,9 @@ export class ConfigManager {
 
 		if (configVersion === 1) {
 			// First run - save all default values to make them visible in dconf-editor
-			logger.log("First run detected, saving default configuration values");
+			this._logger.log(
+				"First run detected, saving default configuration values",
+			);
 
 			// Save all boolean defaults
 			this._settings.set_boolean(
@@ -234,7 +240,7 @@ export class ConfigManager {
 			// Update config version to indicate defaults have been saved
 			this._settings.set_int("config-version", 2);
 
-			logger.log("Default configuration values saved to dconf");
+			this._logger.log("Default configuration values saved to dconf");
 		}
 	}
 
@@ -291,7 +297,7 @@ export class ConfigManager {
 			try {
 				callback(changeType);
 			} catch (error) {
-				logger.error("Error in config change callback:", error);
+				this._logger.error("Error in config change callback:", error);
 			}
 		}
 	}
@@ -323,7 +329,7 @@ export class ConfigManager {
 			this._settings.set_string("app-configs", JSON.stringify(configs));
 			this._init();
 		} catch (error) {
-			logger.error("Failed to save app configs:", error);
+			this._logger.error("Failed to save app configs:", error);
 		}
 	}
 
@@ -376,7 +382,7 @@ export class ConfigManager {
 				if (presetConfig !== undefined) {
 					resolvedConfigs[key] = presetConfig;
 				} else {
-					logger.warn(`Unknown preset reference: ${value} for ${key}`);
+					this._logger.warn(`Unknown preset reference: ${value} for ${key}`);
 					resolvedConfigs[key] = {};
 				}
 			} else {
