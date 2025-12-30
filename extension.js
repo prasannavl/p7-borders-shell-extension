@@ -23,7 +23,7 @@ export default class P7BordersExtension extends Extension {
 
 		if (this._borderManager) {
 			this._borderManager.disable();
+			this._borderManager = null;
 		}
-		this._borderManager = null;
 	}
 }
