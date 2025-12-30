@@ -17,14 +17,12 @@ export class ConfigManager {
 
 		// Connect to settings changes
 		this._settingsConnections = [];
-		this._settingsConnections.push(
-			{
-				object: this._settings,
-				id: this._settings.connect("changed", (_settings, key) => {
-					this._onSettingChanged(key);
-				}),
-			},
-		);
+		this._settingsConnections.push({
+			object: this._settings,
+			id: this._settings.connect("changed", (_settings, key) => {
+				this._onSettingChanged(key);
+			}),
+		});
 
 		// Connect to accent color changes
 		this._settingsConnections.push({
@@ -70,13 +68,12 @@ export class ConfigManager {
 			}
 		}
 
-
 		if (
 			!this._savedAppConfigs ||
 			Object.keys(this._savedAppConfigs).length === 0
 		) {
-			// If no saved configs, we use the fallback which also happen to be 
-			// defaults here. We have it in code instead of file to avoid unnecessary 
+			// If no saved configs, we use the fallback which also happen to be
+			// defaults here. We have it in code instead of file to avoid unnecessary
 			// json read, as it's meant to be the infallible fallback.
 			// This should only happen on first run, and then gsettings
 			// should be the single source of truth.
