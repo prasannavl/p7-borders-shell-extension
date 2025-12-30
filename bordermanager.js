@@ -442,7 +442,6 @@ export class BorderManager {
 	}
 
 	disable() {
-
 		// Remove config change listener
 		this.configManager.removeConfigChangeListener(this._configChangeCallback);
 
