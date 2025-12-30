@@ -10,7 +10,7 @@ import {
 import { ConfigManager } from "./config.js";
 
 export class BorderManager {
-	constructor(logger) {
+	constructor(logger, settings) {
 		this._logger = logger;
 
 		/** @type {Map<Meta.Window, {
@@ -34,8 +34,12 @@ export class BorderManager {
 		this._lastFocusedWindow = null;
 
 		/** @type {ConfigManager | null} */
-		this.configManager = null;
-		this._configChangeCallback = null;
+		this.configManager = new ConfigManager(settings, this._logger);
+		this._configChangeCallback = (changeType) => {
+			this._logger.log(`Config changed: ${changeType}`);
+			this._onConfigChanged(changeType);
+		};
+		this.configManager.addConfigChangeListener(this._configChangeCallback);
 	}
 
 	// --- Helpers ------------------------------------------------------------
@@ -401,17 +405,8 @@ export class BorderManager {
 
 	// --- Extension lifecycle -------------------------------------------------
 
-	enable(settings) {
-		this._logger.log("Extension enabled");
+	enable() {
 		const display = global.display;
-
-		// Recreate config manager on each enable (extension object persists)
-		this.configManager = new ConfigManager(settings, this._logger);
-		this._configChangeCallback = (changeType) => {
-			this._logger.log(`Config changed: ${changeType}`);
-			this._onConfigChanged(changeType);
-		};
-		this.configManager.addConfigChangeListener(this._configChangeCallback);
 
 		this._signals = [
 			{
@@ -447,18 +442,13 @@ export class BorderManager {
 	}
 
 	disable() {
-		this._logger.log("Extension disabled");
 
 		// Remove config change listener
-		if (this._configChangeCallback && this.configManager) {
-			this.configManager.removeConfigChangeListener(this._configChangeCallback);
-		}
+		this.configManager.removeConfigChangeListener(this._configChangeCallback);
 
 		// Clean up config manager
-		if (this.configManager) {
-			this.configManager.destroy();
-			this.configManager = null;
-		}
+		this.configManager.destroy();
+		this.configManager = null;
 		this._configChangeCallback = null;
 		// Disconnect all extension signals
 		for (const { object, id } of this._signals) {

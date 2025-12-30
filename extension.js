@@ -8,14 +8,25 @@ export default class P7BordersExtension extends Extension {
 		super(metadata);
 
 		this._logger = this.getLogger();
-		this._borderManager = new BorderManager(this._logger);
+		this._borderManager = null;
 	}
 
 	enable() {
-		this._borderManager.enable(this.getSettings());
+		this._logger.log("Extension enabled");
+
+		this._borderManager = new BorderManager(
+			this._logger,
+			this.getSettings(),
+		);
+		this._borderManager.enable();
 	}
 
 	disable() {
-		this._borderManager.disable();
+		this._logger.log("Extension disabled");
+
+		if (this._borderManager) {
+			this._borderManager.disable();
+		}
+		this._borderManager = null;
 	}
 }
