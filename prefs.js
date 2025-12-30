@@ -33,11 +33,8 @@ function copyObject(value) {
 }
 
 function setEntryRowPlaceholder(row, text) {
-	const delegate =
-		typeof row.get_delegate === "function" ? row.get_delegate() : null;
-	if (delegate && typeof delegate.set_placeholder_text === "function") {
-		delegate.set_placeholder_text(text);
-	}
+	const delegate = row.get_delegate();
+	delegate.set_placeholder_text(text);
 }
 
 function createPresetModel(presets) {
@@ -165,31 +162,26 @@ function createConfigEditor() {
 	}
 
 	function connectHandlers({ isCustom, setConfigValue, onReset }) {
-		const allowCustom = typeof isCustom === "function" ? isCustom : () => true;
-		const setValue =
-			typeof setConfigValue === "function" ? setConfigValue : () => {};
-		const handleReset = typeof onReset === "function" ? onReset : () => {};
-
 		resetButton.connect("clicked", () => {
-			if (!allowCustom()) return;
-			handleReset();
+			if (!isCustom()) return;
+			onReset();
 		});
 
 		enabledRow.connect("notify::active", () => {
-			if (updating || !allowCustom()) return;
-			setValue((config) => {
+			if (updating || !isCustom()) return;
+			setConfigValue((config) => {
 				config.enabled = enabledRow.active;
 			});
 		});
 		maximizedRow.connect("notify::active", () => {
-			if (updating || !allowCustom()) return;
-			setValue((config) => {
+			if (updating || !isCustom()) return;
+			setConfigValue((config) => {
 				config.maximizedBorder = maximizedRow.active;
 			});
 		});
 		widthRow.connect("notify::value", () => {
-			if (updating || !allowCustom()) return;
-			setValue((config) => {
+			if (updating || !isCustom()) return;
+			setConfigValue((config) => {
 				config.width = Math.round(widthRow.value);
 			});
 		});
@@ -202,8 +194,8 @@ function createConfigEditor() {
 		];
 		for (const [row, side] of marginsRows) {
 			row.connect("notify::value", () => {
-				if (updating || !allowCustom()) return;
-				setValue((config) => {
+				if (updating || !isCustom()) return;
+				setConfigValue((config) => {
 					if (!isObject(config.margins)) config.margins = {};
 					config.margins[side] = Math.round(row.value);
 				});
@@ -218,8 +210,8 @@ function createConfigEditor() {
 		];
 		for (const [row, corner] of radiusRows) {
 			row.connect("notify::value", () => {
-				if (updating || !allowCustom()) return;
-				setValue((config) => {
+				if (updating || !isCustom()) return;
+				setConfigValue((config) => {
 					if (!isObject(config.radius)) config.radius = {};
 					config.radius[corner] = Math.round(row.value);
 				});
@@ -227,17 +219,17 @@ function createConfigEditor() {
 		}
 
 		activeColorRow.connect("notify::text", () => {
-			if (updating || !allowCustom()) return;
+			if (updating || !isCustom()) return;
 			const text = activeColorRow.text.trim();
-			setValue((config) => {
+			setConfigValue((config) => {
 				if (text) config.activeColor = text;
 				else delete config.activeColor;
 			});
 		});
 		inactiveColorRow.connect("notify::text", () => {
-			if (updating || !allowCustom()) return;
+			if (updating || !isCustom()) return;
 			const text = inactiveColorRow.text.trim();
-			setValue((config) => {
+			setConfigValue((config) => {
 				if (text) config.inactiveColor = text;
 				else delete config.inactiveColor;
 			});
@@ -388,8 +380,8 @@ function buildConfigRow({
 	allowPresetSelection,
 	allowRemove,
 	allowRename,
-	validateKey,
-	updateReferences,
+	validateKey = () => true,
+	updateReferences = () => {},
 }) {
 	const isPreset = key.startsWith("@");
 	let currentKey = key;
@@ -427,7 +419,7 @@ function buildConfigRow({
 				keyRow.text = currentKey;
 				return;
 			}
-			if (typeof validateKey === "function" && !validateKey(nextKey)) {
+			if (!validateKey(nextKey)) {
 				keyRow.text = currentKey;
 				return;
 			}
@@ -438,9 +430,7 @@ function buildConfigRow({
 			}
 			rawConfigs[nextKey] = rawConfigs[currentKey];
 			delete rawConfigs[currentKey];
-			if (typeof updateReferences === "function") {
-				updateReferences(currentKey, nextKey, rawConfigs);
-			}
+			updateReferences(currentKey, nextKey, rawConfigs);
 			currentKey = nextKey;
 			expander.title = currentKey;
 			keyRow.text = currentKey;

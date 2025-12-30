@@ -16,10 +16,8 @@ function _normalizeMaximize(metaWindow) {
 	let vertical = (flags & vFlag) !== 0;
 
 	if (!flags) {
-		if (typeof metaWindow.maximized_horizontally === "boolean")
-			horizontal = metaWindow.maximized_horizontally;
-		if (typeof metaWindow.maximized_vertically === "boolean")
-			vertical = metaWindow.maximized_vertically;
+		horizontal = !!metaWindow.maximized_horizontally;
+		vertical = !!metaWindow.maximized_vertically;
 	}
 
 	const any = horizontal || vertical;
@@ -32,34 +30,6 @@ export function getMaximizeState(metaWindow) {
 	return _normalizeMaximize(metaWindow);
 }
 
-function _getFrameAndWorkarea(metaWindow, actor, width, height) {
-	let frame;
-	let workarea;
-
-	try {
-		frame = metaWindow.get_frame_rect?.() ?? {
-			x: actor.x,
-			y: actor.y,
-			width,
-			height,
-		};
-
-		if (metaWindow.get_work_area_current_monitor) {
-			workarea = metaWindow.get_work_area_current_monitor();
-		} else if (metaWindow.get_monitor) {
-			workarea = global.display.get_monitor_workarea(metaWindow.get_monitor());
-		} else {
-			workarea = global.display.get_monitor_workarea(0);
-		}
-	} catch {
-		frame = { x: actor.x, y: actor.y, width, height };
-		const monitor = metaWindow.get_monitor ? metaWindow.get_monitor() : 0;
-		workarea = global.display.get_monitor_workarea(monitor);
-	}
-
-	return { frame, workarea };
-}
-
 export function getWindowState(
 	metaWindow,
 	actor,
@@ -69,12 +39,8 @@ export function getWindowState(
 	const width = box.x2 - box.x1;
 	const height = box.y2 - box.y1;
 
-	const { frame, workarea } = _getFrameAndWorkarea(
-		metaWindow,
-		actor,
-		width,
-		height,
-	);
+	const frame = metaWindow.get_frame_rect();
+	const workarea = metaWindow.get_work_area_current_monitor();
 	const maximize = maximizeOverride ?? _normalizeMaximize(metaWindow);
 
 	return {

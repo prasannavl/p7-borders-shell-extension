@@ -8,14 +8,9 @@ export class ConfigManager {
 		this._logger = logger;
 
 		// Interface settings for accent color detection
-		this._interfaceSettings = null;
-		try {
-			this._interfaceSettings = new Gio.Settings({
-				schema_id: "org.gnome.desktop.interface",
-			});
-		} catch (error) {
-			this._logger.log("Interface settings not available:", error.message);
-		}
+		this._interfaceSettings = new Gio.Settings({
+			schema_id: "org.gnome.desktop.interface",
+		});
 
 		// Callbacks for config changes
 		this._configChangeCallbacks = new Set();
@@ -23,19 +18,21 @@ export class ConfigManager {
 		// Connect to settings changes
 		this._settingsConnections = [];
 		this._settingsConnections.push(
-			this._settings.connect("changed", (_settings, key) => {
-				this._onSettingChanged(key);
-			}),
+			{
+				object: this._settings,
+				id: this._settings.connect("changed", (_settings, key) => {
+					this._onSettingChanged(key);
+				}),
+			},
 		);
 
 		// Connect to accent color changes
-		if (this._interfaceSettings) {
-			this._settingsConnections.push(
-				this._interfaceSettings.connect("changed::accent-color", () => {
-					this._onAccentColorChanged();
-				}),
-			);
-		}
+		this._settingsConnections.push({
+			object: this._interfaceSettings,
+			id: this._interfaceSettings.connect("changed::accent-color", () => {
+				this._onAccentColorChanged();
+			}),
+		});
 
 		// Initialize config from gsettings or set defaults
 		this.appConfigFallback = {};
@@ -258,26 +255,22 @@ export class ConfigManager {
 			return defaultAccent;
 		}
 
-		try {
-			const accentColor = this._interfaceSettings.get_string("accent-color");
+		const accentColor = this._interfaceSettings.get_string("accent-color");
 
-			// Map GNOME accent colors to RGBA values with alpha 0.4
-			const accentColorMap = {
-				blue: "rgba(53, 132, 228, 0.4)",
-				teal: "rgba(51, 209, 122, 0.4)",
-				green: "rgba(46, 194, 126, 0.4)",
-				yellow: "rgba(248, 228, 92, 0.4)",
-				orange: "rgba(255, 120, 0, 0.4)",
-				red: "rgba(237, 51, 59, 0.4)",
-				pink: "rgba(224, 27, 36, 0.4)",
-				purple: "rgba(145, 65, 172, 0.4)",
-				slate: "rgba(99, 104, 128, 0.4)",
-			};
+		// Map GNOME accent colors to RGBA values with alpha 0.4
+		const accentColorMap = {
+			blue: "rgba(53, 132, 228, 0.4)",
+			teal: "rgba(51, 209, 122, 0.4)",
+			green: "rgba(46, 194, 126, 0.4)",
+			yellow: "rgba(248, 228, 92, 0.4)",
+			orange: "rgba(255, 120, 0, 0.4)",
+			red: "rgba(237, 51, 59, 0.4)",
+			pink: "rgba(224, 27, 36, 0.4)",
+			purple: "rgba(145, 65, 172, 0.4)",
+			slate: "rgba(99, 104, 128, 0.4)",
+		};
 
-			return accentColorMap[accentColor] || defaultAccent;
-		} catch (_err) {
-			return defaultAccent;
-		}
+		return accentColorMap[accentColor] || defaultAccent;
 	}
 
 	// --- GSettings change handling -----------------------------------------
@@ -294,11 +287,7 @@ export class ConfigManager {
 
 	_notifyConfigChange(changeType) {
 		for (const callback of this._configChangeCallbacks) {
-			try {
-				callback(changeType);
-			} catch (error) {
-				this._logger.error("Error in config change callback:", error);
-			}
+			callback(changeType);
 		}
 	}
 
@@ -325,12 +314,8 @@ export class ConfigManager {
 	 * @param {Object} configs - The app configurations to save
 	 */
 	saveAppConfigs(configs) {
-		try {
-			this._settings.set_string("app-configs", JSON.stringify(configs));
-			this._init();
-		} catch (error) {
-			this._logger.error("Failed to save app configs:", error);
-		}
+		this._settings.set_string("app-configs", JSON.stringify(configs));
+		this._init();
 	}
 
 	/**
@@ -338,22 +323,8 @@ export class ConfigManager {
 	 */
 	destroy() {
 		// Disconnect settings signals
-		for (const connectionId of this._settingsConnections) {
-			try {
-				this._settings.disconnect(connectionId);
-			} catch (_error) {
-				// Signal might already be disconnected
-			}
-		}
-
-		if (this._interfaceSettings) {
-			for (const connectionId of this._settingsConnections) {
-				try {
-					this._interfaceSettings.disconnect(connectionId);
-				} catch (_error) {
-					// Signal might already be disconnected
-				}
-			}
+		for (const { object, id } of this._settingsConnections) {
+			object.disconnect(id);
 		}
 
 		this._settingsConnections = [];
