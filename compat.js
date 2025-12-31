@@ -26,14 +26,14 @@ export function getMaximizeState(metaWindow) {
 	return { any, full, horizontal, vertical };
 }
 
-export function getWindowState(metaWindow, actor, maximizeOverride = null) {
+export function getWindowState(metaWindow, actor) {
 	const box = actor.get_allocation_box();
 	const width = box.x2 - box.x1;
 	const height = box.y2 - box.y1;
 
 	const frame = metaWindow.get_frame_rect();
 	const workarea = metaWindow.get_work_area_current_monitor();
-	const maximize = maximizeOverride ?? getMaximizeState(metaWindow);
+	const maximize = getMaximizeState(metaWindow);
 
 	return {
 		actorSize: { width, height },
@@ -45,7 +45,7 @@ export function getWindowState(metaWindow, actor, maximizeOverride = null) {
 	};
 }
 
-export function applyBorderState(border, state, borderColor, cache) {
+export function applyBorderState(border, state, cache) {
 	if (!state.visible) {
 		border.visible = false;
 		if (cache) cache.borderStyleCache = null;
@@ -55,7 +55,7 @@ export function applyBorderState(border, state, borderColor, cache) {
 	border.set_position(state.pos.x, state.pos.y);
 	border.set_size(state.size.width, state.size.height);
 
-	const { borderWidths, radius } = state;
+	const { borderWidths, radius, borderColor } = state;
 	const styleKey =
 		`${borderWidths.top},${borderWidths.right},${borderWidths.bottom},${borderWidths.left}|` +
 		`${radius.tl},${radius.tr},${radius.br},${radius.bl}|${borderColor}`;

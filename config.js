@@ -43,6 +43,8 @@ export class ConfigManager {
 	_init() {
 		// Load boolean settings
 		this.radiusEnabled = this._settings.get_boolean("radius-enabled");
+		const globalConfig = { radiusEnabled: this.radiusEnabled };
+		this.globalConfig = globalConfig;
 
 		// Update fallback config from all current settings
 		this.appConfigFallback.activeColor = this._getAccentColor();
@@ -162,20 +164,26 @@ export class ConfigManager {
 
 		// Create @default config by merging with fallback
 		const defaultRawConfig = this._savedAppConfigs["@default"] || {};
-		const defaultConfig = this.normalizeConfig({
-			...this.appConfigFallback,
-			...defaultRawConfig,
-		});
+		const defaultConfig = this.normalizeConfig(
+			{
+				...this.appConfigFallback,
+				...defaultRawConfig,
+			},
+			globalConfig,
+		);
 		this.appConfigs["@default"] = defaultConfig;
 
 		// Normalize all other configs using @default as base
 		for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
 			if (!key.startsWith("@")) {
-				this.appConfigs[key] = this.normalizeConfig({
-					...defaultConfig,
-					...{ enabled: true },
-					...rawConfig,
-				});
+				this.appConfigs[key] = this.normalizeConfig(
+					{
+						...defaultConfig,
+						...{ enabled: true },
+						...rawConfig,
+					},
+					globalConfig,
+				);
 			}
 		}
 	}
@@ -190,47 +198,28 @@ export class ConfigManager {
 				"First run detected, saving default configuration values",
 			);
 
-			// Save all boolean defaults
-			this._settings.set_boolean(
+			const boolKeys = [
 				"radius-enabled",
-				this._settings.get_boolean("radius-enabled"),
-			);
-			this._settings.set_boolean(
 				"default-maximized-borders",
-				this._settings.get_boolean("default-maximized-borders"),
-			);
-			this._settings.set_boolean(
 				"default-enabled",
-				this._settings.get_boolean("default-enabled"),
-			);
+			];
+			for (const key of boolKeys) {
+				this._settings.set_boolean(key, this._settings.get_boolean(key));
+			}
 
-			// Save all integer defaults
-			this._settings.set_int(
-				"default-margins",
-				this._settings.get_int("default-margins"),
-			);
-			this._settings.set_int(
-				"default-radius",
-				this._settings.get_int("default-radius"),
-			);
-			this._settings.set_int(
-				"default-width",
-				this._settings.get_int("default-width"),
-			);
+			const intKeys = ["default-margins", "default-radius", "default-width"];
+			for (const key of intKeys) {
+				this._settings.set_int(key, this._settings.get_int(key));
+			}
 
-			// Save all string defaults
-			this._settings.set_string(
+			const stringKeys = [
 				"default-active-color",
-				this._settings.get_string("default-active-color"),
-			);
-			this._settings.set_string(
 				"default-inactive-color",
-				this._settings.get_string("default-inactive-color"),
-			);
-			this._settings.set_string(
 				"app-configs",
-				this._settings.get_string("app-configs"),
-			);
+			];
+			for (const key of stringKeys) {
+				this._settings.set_string(key, this._settings.get_string(key));
+			}
 
 			// Update config version to indicate defaults have been saved
 			this._settings.set_int("config-version", 2);
@@ -397,11 +386,14 @@ export class ConfigManager {
 		}
 	}
 
-	normalizeConfig(config = {}) {
+	normalizeConfig(config = {}, globalConfig = {}) {
+		const radiusEnabled = globalConfig.radiusEnabled ?? true;
 		return {
 			...config,
 			margins: this.normalizeMargins(config.margins),
-			radius: this.normalizeRadius(config.radius),
+			radius: radiusEnabled
+				? this.normalizeRadius(config.radius)
+				: { tl: 0, tr: 0, br: 0, bl: 0 },
 		};
 	}
 

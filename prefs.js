@@ -37,6 +37,18 @@ function setEntryRowPlaceholder(row, text) {
 	delegate.set_placeholder_text(text);
 }
 
+function createSpinRow({ title, subtitle, lower, upper, step = 1 }) {
+	return new Adw.SpinRow({
+		title,
+		subtitle,
+		adjustment: new Gtk.Adjustment({
+			lower,
+			upper,
+			step_increment: step,
+		}),
+	});
+}
+
 function clearGroupChildren(group) {
 	let child = group.get_first_child();
 	while (child) {
@@ -53,62 +65,60 @@ function createPresetModel(presets) {
 	return model;
 }
 
+function getPresetConfig(rawConfigs, presetKey) {
+	const presetValue = rawConfigs[presetKey];
+	return isObject(presetValue) ? presetValue : {};
+}
+
 function createConfigEditor() {
 	const enabledRow = new Adw.SwitchRow({ title: "Enabled" });
 	const maximizedRow = new Adw.SwitchRow({ title: "Show when maximized" });
-	const widthRow = new Adw.SpinRow({
+	const widthRow = createSpinRow({
 		title: "Border width",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 50, step_increment: 1 }),
+		lower: 0,
+		upper: 50,
 	});
 
-	const marginsTopRow = new Adw.SpinRow({
+	const marginsTopRow = createSpinRow({
 		title: "Margin top",
-		adjustment: new Gtk.Adjustment({
-			lower: -100,
-			upper: 100,
-			step_increment: 1,
-		}),
+		lower: -100,
+		upper: 100,
 	});
-	const marginsRightRow = new Adw.SpinRow({
+	const marginsRightRow = createSpinRow({
 		title: "Margin right",
-		adjustment: new Gtk.Adjustment({
-			lower: -100,
-			upper: 100,
-			step_increment: 1,
-		}),
+		lower: -100,
+		upper: 100,
 	});
-	const marginsBottomRow = new Adw.SpinRow({
+	const marginsBottomRow = createSpinRow({
 		title: "Margin bottom",
-		adjustment: new Gtk.Adjustment({
-			lower: -100,
-			upper: 100,
-			step_increment: 1,
-		}),
+		lower: -100,
+		upper: 100,
 	});
-	const marginsLeftRow = new Adw.SpinRow({
+	const marginsLeftRow = createSpinRow({
 		title: "Margin left",
-		adjustment: new Gtk.Adjustment({
-			lower: -100,
-			upper: 100,
-			step_increment: 1,
-		}),
+		lower: -100,
+		upper: 100,
 	});
 
-	const radiusTlRow = new Adw.SpinRow({
+	const radiusTlRow = createSpinRow({
 		title: "Radius top-left",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 200, step_increment: 1 }),
+		lower: 0,
+		upper: 200,
 	});
-	const radiusTrRow = new Adw.SpinRow({
+	const radiusTrRow = createSpinRow({
 		title: "Radius top-right",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 200, step_increment: 1 }),
+		lower: 0,
+		upper: 200,
 	});
-	const radiusBrRow = new Adw.SpinRow({
+	const radiusBrRow = createSpinRow({
 		title: "Radius bottom-right",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 200, step_increment: 1 }),
+		lower: 0,
+		upper: 200,
 	});
-	const radiusBlRow = new Adw.SpinRow({
+	const radiusBlRow = createSpinRow({
 		title: "Radius bottom-left",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 200, step_increment: 1 }),
+		lower: 0,
+		upper: 200,
 	});
 
 	const activeColorRow = new Adw.EntryRow({
@@ -326,22 +336,21 @@ function buildGlobalPage(settings) {
 	);
 
 	const defaultsGroup = new Adw.PreferencesGroup({ title: "Defaults" });
-	const widthRow = new Adw.SpinRow({
+	const widthRow = createSpinRow({
 		title: "Border width",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 50, step_increment: 1 }),
+		lower: 0,
+		upper: 50,
 	});
-	const marginsRow = new Adw.SpinRow({
+	const marginsRow = createSpinRow({
 		title: "Margins",
 		subtitle: "Applied equally to all sides",
-		adjustment: new Gtk.Adjustment({
-			lower: -100,
-			upper: 100,
-			step_increment: 1,
-		}),
+		lower: -100,
+		upper: 100,
 	});
-	const radiusRow = new Adw.SpinRow({
+	const radiusRow = createSpinRow({
 		title: "Corner radius",
-		adjustment: new Gtk.Adjustment({ lower: 0, upper: 200, step_increment: 1 }),
+		lower: 0,
+		upper: 200,
 	});
 	defaultsGroup.add(widthRow);
 	defaultsGroup.add(marginsRow);
@@ -536,10 +545,8 @@ function buildConfigRow({
 		saveConfigs();
 	}
 
-	function getPresetConfig(presetKey) {
-		const rawConfigs = getRawConfigs();
-		const presetValue = rawConfigs[presetKey];
-		return isObject(presetValue) ? presetValue : {};
+	function getPresetConfigForKey(presetKey) {
+		return getPresetConfig(getRawConfigs(), presetKey);
 	}
 
 	function applyConfig(config) {
@@ -569,7 +576,7 @@ function buildConfigRow({
 			expander.subtitle = `Preset: ${value}`;
 			isCustom = false;
 			setCustomSensitive(false);
-			applyConfig(getPresetConfig(value));
+			applyConfig(getPresetConfigForKey(value));
 		} else {
 			updating = true;
 			presetRow.selected = 0;
@@ -605,7 +612,7 @@ function buildConfigRow({
 				isCustom = false;
 				expander.subtitle = `Preset: ${preset}`;
 				setCustomSensitive(false);
-				applyConfig(getPresetConfig(preset));
+				applyConfig(getPresetConfigForKey(preset));
 			},
 			presetRow,
 		);
@@ -686,9 +693,8 @@ function buildConfigsPage(settings) {
 		description: "Unset values inherit from global defaults.",
 	});
 
-	function getPresetConfig(presetKey) {
-		const presetValue = rawConfigs[presetKey];
-		return isObject(presetValue) ? presetValue : {};
+	function getPresetConfigForKey(presetKey) {
+		return getPresetConfig(rawConfigs, presetKey);
 	}
 
 	function updateAddPresetModel() {
@@ -801,7 +807,7 @@ function buildConfigsPage(settings) {
 			addIsCustom = false;
 			addDraftPreset = preset;
 			addEditor.setCustomSensitive(false);
-			addEditor.applyConfig(getPresetConfig(preset));
+			addEditor.applyConfig(getPresetConfigForKey(preset));
 		},
 		addPresetRow,
 	);

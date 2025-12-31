@@ -4,7 +4,6 @@ import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import {
 	applyBorderState,
-	getMaximizeState,
 	getWindowState,
 } from "./compat.js";
 import { ConfigManager } from "./config.js";
@@ -104,30 +103,11 @@ export class BorderManager {
 
 	_syncBorderToActor(metaWindow, data) {
 		const { border, actor, config } = data;
-		const maximize = getMaximizeState(metaWindow);
 
-		if (
-			metaWindow.fullscreen ||
-			maximize.full ||
-			(!config.maximizedBorder && maximize.any) ||
-			!config.width ||
-			!config.enabled
-		) {
-			applyBorderState(border, { visible: false }, null, data);
-			return;
-		}
+		const windowState = getWindowState(metaWindow, actor);
+		const policyState = computeBorderState(windowState, config);
 
-		const windowState = getWindowState(metaWindow, actor, maximize);
-		const policyState = computeBorderState({
-			...windowState,
-			config,
-			radiusEnabled: this.configManager.radiusEnabled,
-		});
-
-		const borderColor = windowState.isFocused
-			? config.activeColor
-			: config.inactiveColor;
-		applyBorderState(border, policyState, borderColor, data);
+		applyBorderState(border, policyState, data);
 	}
 
 	// --- Per-window lifecycle -----------------------------------------------
@@ -139,7 +119,7 @@ export class BorderManager {
 		const config = this.configManager.getConfigForWindow(metaWindow);
 
 		// Only update if config actually changed
-		if (JSON.stringify(data.config) === JSON.stringify(config)) return;
+		if (data.config === config) return;
 
 		data.config = config;
 
@@ -392,16 +372,13 @@ export class BorderManager {
 	}
 }
 
-function computeBorderState({
-	actorSize,
-	frame,
-	workarea,
-	config,
-	isFullscreen,
-	maximize,
-	radiusEnabled,
-}) {
+function computeBorderState(windowState, config) {
+	const { actorSize, frame, workarea, isFullscreen, maximize, isFocused } =
+		windowState;
+	const EDGE_EPS = 2;
+	const ZERO_RADIUS = { tl: 0, tr: 0, br: 0, bl: 0 };
 	const { margins, radius, width: borderWidth } = config;
+	const radiusEnabled = !!(radius.tl || radius.tr || radius.br || radius.bl);
 
 	if (
 		isFullscreen ||
@@ -418,8 +395,7 @@ function computeBorderState({
 		return { visible: false };
 	}
 
-	const EPS = 2;
-	const edgeThreshold = Math.max(EPS, borderWidth);
+	const edgeThreshold = Math.max(EDGE_EPS, borderWidth);
 	const edges = {
 		left: Math.abs(frame.x - workarea.x) <= edgeThreshold,
 		right:
@@ -440,12 +416,7 @@ function computeBorderState({
 
 	const effRadius =
 		!radiusEnabled || maximize.any
-			? {
-					tl: 0,
-					tr: 0,
-					br: 0,
-					bl: 0,
-				}
+			? ZERO_RADIUS
 			: {
 					tl: edges.top && edges.left ? 0 : radius.tl,
 					tr: edges.top && edges.right ? 0 : radius.tr,
@@ -480,6 +451,7 @@ function computeBorderState({
 	return {
 		visible: true,
 		borderWidths,
+		borderColor: isFocused ? config.activeColor : config.inactiveColor,
 		radius: effRadius,
 		pos,
 		size,
