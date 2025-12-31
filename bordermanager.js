@@ -16,37 +16,46 @@ export class BorderManager {
 		/** @type {Map<Meta.Window, {
 		 *   border: St.Widget,
 		 *   actor: Meta.WindowActor,
-		 *   signals: Array<{object: any, id: number}>,_signals
 		 *   config: any,
+		 *   borderStyleCache: string | null,
 		 * }>} */
 		this._windowData = new Map();
 
-		/** @type {Map<Meta.Window, {object: any, id: number}>} */
+		/** @type {Map<Meta.Window, {object: any, token: object}>} */
 		this._pendingTrack = new Map();
 
 		/** @type {Map<Meta.Window, number>} */
 		this._pendingSyncs = new Map();
-
-		/** @type {Array<{object: any, id: number}>} */
-		this._signals = [];
 
 		/** @type {Meta.Window | null} */
 		this._lastFocusedWindow = null;
 
 		/** @type {ConfigManager | null} */
 		this.configManager = new ConfigManager(settings, this._logger);
-		this._configChangeCallback = (changeType) => {
-			this._logger.log(`Config changed: ${changeType}`);
-			this._onConfigChanged(changeType);
-		};
+		this._configChangeCallback = (x) => this._onConfigChanged(x);
 		this.configManager.addConfigChangeListener(this._configChangeCallback);
 	}
 
 	// --- Helpers ------------------------------------------------------------
 
-	_hideBorder(border) {
-		border.visible = false;
-		border._lastStyleKey = null;
+	_hideBorder(data) {
+		if (!data) return;
+		data.border.visible = false;
+		data.borderStyleCache = null;
+	}
+
+	_clearPendingTrack(metaWindow) {
+		const pending = this._pendingTrack.get(metaWindow);
+		if (!pending) return;
+		const { object, token } = pending;
+		if (object && !object.is_destroyed?.()) object.disconnectObject(token);
+		this._pendingTrack.delete(metaWindow);
+	}
+
+	_setPendingTrack(metaWindow, object, signal, handler) {
+		const token = {};
+		object.connectObject(signal, handler, token);
+		this._pendingTrack.set(metaWindow, { object, token });
 	}
 
 	_isInterestingWindow(metaWindow) {
@@ -60,19 +69,19 @@ export class BorderManager {
 
 	_resyncAll() {
 		for (const [win, data] of this._windowData.entries()) {
-			const { actor, border } = data;
 			// Get fresh config to ensure we have latest colors/settings
 			const config = this.configManager.getConfigForWindow(win);
-			data.config = config; // Update stored config
-
+			data.config = config;
 			// Clear style cache to force reapplication of colors
-			border._lastStyleKey = null;
-
-			this._syncWindow(win, border, actor, config);
+			data.borderStyleCache = null;
+			this._queueUpdate(win, data);
 		}
 	}
 
-	_syncWindow(metaWindow, border, actor, config) {
+	_queueUpdate(metaWindow, data) {
+		if (!data) return;
+		const { border, actor } = data;
+
 		// Coalesce rapid updates: only the last scheduled sync runs
 		const existing = this._pendingSyncs.get(metaWindow);
 		if (existing) {
@@ -84,8 +93,7 @@ export class BorderManager {
 		const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 			this._pendingSyncs.delete(metaWindow);
 			if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
-				const box = actor.get_allocation_box();
-				this._syncBorderToActor(border, actor, box, config, metaWindow);
+				this._syncBorderToActor(metaWindow, data);
 			}
 			return GLib.SOURCE_REMOVE;
 		});
@@ -94,7 +102,8 @@ export class BorderManager {
 
 	// --- Core geometry + style sync -----------------------------------------
 
-	_syncBorderToActor(border, actor, box, config, metaWindow) {
+	_syncBorderToActor(metaWindow, data) {
+		const { border, actor, config } = data;
 		const maximize = getMaximizeState(metaWindow);
 
 		if (
@@ -104,11 +113,11 @@ export class BorderManager {
 			!config.width ||
 			!config.enabled
 		) {
-			applyBorderState(border, { visible: false });
+			applyBorderState(border, { visible: false }, null, data);
 			return;
 		}
 
-		const windowState = getWindowState(metaWindow, actor, box, maximize);
+		const windowState = getWindowState(metaWindow, actor, maximize);
 		const policyState = computeBorderState({
 			...windowState,
 			config,
@@ -118,7 +127,7 @@ export class BorderManager {
 		const borderColor = windowState.isFocused
 			? config.activeColor
 			: config.inactiveColor;
-		applyBorderState(border, policyState, borderColor);
+		applyBorderState(border, policyState, borderColor, data);
 	}
 
 	// --- Per-window lifecycle -----------------------------------------------
@@ -127,7 +136,6 @@ export class BorderManager {
 		const data = this._windowData.get(metaWindow);
 		if (!data) return;
 
-		const { border, actor } = data;
 		const config = this.configManager.getConfigForWindow(metaWindow);
 
 		// Only update if config actually changed
@@ -136,9 +144,9 @@ export class BorderManager {
 		data.config = config;
 
 		// Clear style cache to force reapplication of colors/settings
-		border._lastStyleKey = null;
+		data.borderStyleCache = null;
 
-		this._syncWindow(metaWindow, border, actor, config);
+		this._queueUpdate(metaWindow, data);
 
 		const windowTitle = metaWindow.get_title() || "untitled";
 		this._logger.log(
@@ -156,13 +164,10 @@ export class BorderManager {
 			// Actor not ready yet - listen for when window is shown (actor will be ready by then)
 			if (this._pendingTrack.has(metaWindow)) return;
 
-			const signalId = metaWindow.connect("shown", () => {
-				metaWindow.disconnect(signalId);
-				this._pendingTrack.delete(metaWindow);
+			this._setPendingTrack(metaWindow, metaWindow, "shown", () => {
+				this._clearPendingTrack(metaWindow);
 				this._trackWindow(metaWindow);
 			});
-
-			this._pendingTrack.set(metaWindow, { object: metaWindow, id: signalId });
 			return;
 		}
 
@@ -175,18 +180,15 @@ export class BorderManager {
 			// Actor exists but not allocated yet - wait for allocation
 			if (this._pendingTrack.has(metaWindow)) return;
 
-			const signalId = actor.connect("notify::allocation", () => {
+			this._setPendingTrack(metaWindow, actor, "notify::allocation", () => {
 				const alloc = actor.get_allocation_box();
 				const w = alloc ? alloc.get_width() : 0;
 				const h = alloc ? alloc.get_height() : 0;
 				if (alloc && w > 0 && h > 0) {
-					actor.disconnect(signalId);
-					this._pendingTrack.delete(metaWindow);
+					this._clearPendingTrack(metaWindow);
 					this._trackWindow(metaWindow);
 				}
 			});
-
-			this._pendingTrack.set(metaWindow, { object: actor, id: signalId });
 			return;
 		}
 
@@ -203,90 +205,60 @@ export class BorderManager {
 		actor.set_child_above_sibling(border, null);
 
 		const config = this.configManager.getConfigForWindow(metaWindow);
-		const signals = [
-			{
-				object: actor,
-				id: actor.connect("notify::allocation", () => {
-					const data = this._windowData.get(metaWindow);
-					if (data) this._syncWindow(metaWindow, border, actor, data.config);
-				}),
+		actor.connectObject(
+			"notify::allocation",
+			() => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
+			this,
+		);
+		metaWindow.connectObject(
+			"unmanaged",
+			() => this._untrackWindow(metaWindow),
+			"notify::fullscreen",
+			() => {
+				const data = this._windowData.get(metaWindow);
+				if (metaWindow.fullscreen) {
+					this._hideBorder(data);
+				} else {
+					this._queueUpdate(metaWindow, data);
+				}
 			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("unmanaged", () =>
-					this._untrackWindow(metaWindow),
-				),
+			"notify::wm-class",
+			() => this._updateWindowConfig(metaWindow),
+			"notify::gtk-application-id",
+			() => this._updateWindowConfig(metaWindow),
+			"notify::title",
+			() => this._updateWindowConfig(metaWindow),
+			"notify::appears-focused",
+			() => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
+			"position-changed",
+			() => {
+				// Prevent mutter from leaving artifacts when moving windows quickly
+				// until resize is fully complete.
+				border.queue_redraw();
 			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("notify::fullscreen", () => {
-					if (metaWindow.fullscreen) {
-						this._hideBorder(border);
-					} else {
-						const data = this._windowData.get(metaWindow);
-						if (data) this._syncWindow(metaWindow, border, actor, data.config);
-					}
-				}),
-			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("notify::wm-class", () =>
-					this._updateWindowConfig(metaWindow),
-				),
-			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("notify::gtk-application-id", () =>
-					this._updateWindowConfig(metaWindow),
-				),
-			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("notify::title", () =>
-					this._updateWindowConfig(metaWindow),
-				),
-			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("notify::appears-focused", () => {
-					const data = this._windowData.get(metaWindow);
-					if (data) this._syncWindow(metaWindow, border, actor, data.config);
-				}),
-			},
-			{
-				object: metaWindow,
-				id: metaWindow.connect("position-changed", () => {
-					// Prevent mutter from leaving artifacts when moving windows quickly
-					// until resize is fully complete.
-					border.queue_redraw();
-				}),
-			},
-		];
+			this,
+		);
 
 		const windowTitle = metaWindow.get_title() || "untitled";
-		this._windowData.set(metaWindow, {
+		const windowData = {
 			border,
 			actor,
-			signals,
 			config,
-		});
+			borderStyleCache: null,
+		};
+		this._windowData.set(metaWindow, windowData);
 
 		this._logger.log(
 			`Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
 		);
 
 		// Initial sync
-		this._syncWindow(metaWindow, border, actor, config);
+		this._queueUpdate(metaWindow, windowData);
 	}
 
 	_untrackWindow(metaWindow) {
 		// Cancel pending signal tracking
-		const pending = this._pendingTrack.get(metaWindow);
-		if (pending) {
-			const { object, id } = pending;
-			if (object && !object.is_destroyed?.()) object.disconnect(id);
-			this._pendingTrack.delete(metaWindow);
-		}
+		this._clearPendingTrack(metaWindow);
 
 		const data = this._windowData.get(metaWindow);
 
@@ -299,12 +271,9 @@ export class BorderManager {
 
 		if (!data) return;
 
-		const { border, actor, signals } = data;
-
-		// Disconnect all signals with disposal guards
-		for (const { object, id } of signals) {
-			if (object && !object.is_destroyed?.()) object.disconnect(id);
-		}
+		const { border, actor } = data;
+		metaWindow.disconnectObject(this);
+		if (actor) actor.disconnectObject(this);
 
 		// Remove border from actor with disposal guards
 		if (
@@ -320,7 +289,8 @@ export class BorderManager {
 		this._windowData.delete(metaWindow);
 	}
 
-	_onConfigChanged(_changeType) {
+	_onConfigChanged(changeType) {
+		this._logger.log(`Config changed: ${changeType}`);
 		// For any config change, resync all windows
 		this._resyncAll();
 	}
@@ -330,9 +300,7 @@ export class BorderManager {
 		const lastData = this._lastFocusedWindow
 			? this._windowData.get(this._lastFocusedWindow)
 			: null;
-		const currentData = currentFocus
-			? this._windowData.get(currentFocus)
-			: null;
+		const currentData = currentFocus ? this._windowData.get(currentFocus) : null;
 
 		const lastValid =
 			lastData &&
@@ -354,24 +322,10 @@ export class BorderManager {
 		}
 
 		// Sync the previously focused window (if any)
-		if (lastData) {
-			this._syncWindow(
-				this._lastFocusedWindow,
-				lastData.border,
-				lastData.actor,
-				lastData.config,
-			);
-		}
+		this._queueUpdate(this._lastFocusedWindow, lastData);
 
 		// Sync the newly focused window (if any)
-		if (currentData) {
-			this._syncWindow(
-				currentFocus,
-				currentData.border,
-				currentData.actor,
-				currentData.config,
-			);
-		}
+		this._queueUpdate(currentFocus, currentData);
 
 		// Update last focused window
 		this._lastFocusedWindow = currentFocus;
@@ -386,30 +340,20 @@ export class BorderManager {
 	enable() {
 		const display = global.display;
 
-		this._signals = [
-			{
-				object: display,
-				id: display.connect("window-created", (_display, metaWindow) =>
-					this._onWindowCreated(metaWindow),
-				),
-			},
-			{
-				object: display,
-				id: display.connect("workareas-changed", () => this._resyncAll()),
-			},
-			{
-				object: Main.layoutManager,
-				id: Main.layoutManager.connect("monitors-changed", () =>
-					this._resyncAll(),
-				),
-			},
-			{
-				object: display,
-				id: display.connect("notify::focus-window", () =>
-					this._onFocusChanged(),
-				),
-			},
-		];
+		display.connectObject(
+			"window-created",
+			(_display, metaWindow) => this._onWindowCreated(metaWindow),
+			"workareas-changed",
+			() => this._resyncAll(),
+			"notify::focus-window",
+			() => this._onFocusChanged(),
+			this,
+		);
+		Main.layoutManager.connectObject(
+			"monitors-changed",
+			() => this._resyncAll(),
+			this,
+		);
 
 		// Attach to existing windows
 		for (const actor of global.get_window_actors()) {
@@ -428,10 +372,8 @@ export class BorderManager {
 		this.configManager = null;
 		this._configChangeCallback = null;
 		// Disconnect all extension signals
-		for (const { object, id } of this._signals) {
-			object.disconnect(id);
-		}
-		this._signals = [];
+		global.display.disconnectObject(this);
+		Main.layoutManager.disconnectObject(this);
 
 		// Cancel all pending syncs
 		for (const [_win, syncId] of this._pendingSyncs.entries()) {
@@ -440,9 +382,8 @@ export class BorderManager {
 		this._pendingSyncs.clear();
 
 		// Cancel pending signal tracking
-		for (const [win, { object, id }] of this._pendingTrack.entries()) {
-			if (object && !object.is_destroyed?.()) object.disconnect(id);
-			this._pendingTrack.delete(win);
+		for (const [win] of this._pendingTrack.entries()) {
+			this._clearPendingTrack(win);
 		}
 
 		for (const [win] of this._windowData.entries()) this._untrackWindow(win);

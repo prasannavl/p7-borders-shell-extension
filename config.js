@@ -16,21 +16,14 @@ export class ConfigManager {
 		this._configChangeCallbacks = new Set();
 
 		// Connect to settings changes
-		this._settingsConnections = [];
-		this._settingsConnections.push({
-			object: this._settings,
-			id: this._settings.connect("changed", (_settings, key) => {
-				this._onSettingChanged(key);
-			}),
-		});
+		this._settings.connectObject("changed", (_settings, key) => {
+			this._onSettingChanged(key);
+		}, this);
 
 		// Connect to accent color changes
-		this._settingsConnections.push({
-			object: this._interfaceSettings,
-			id: this._interfaceSettings.connect("changed::accent-color", () => {
-				this._onAccentColorChanged();
-			}),
-		});
+		this._interfaceSettings.connectObject("changed::accent-color", () => {
+			this._onAccentColorChanged();
+		}, this);
 
 		// Initialize config from gsettings or set defaults
 		this.appConfigFallback = {};
@@ -248,10 +241,6 @@ export class ConfigManager {
 			return activeColor;
 		}
 
-		if (!this._interfaceSettings) {
-			return defaultAccent;
-		}
-
 		const accentColor = this._interfaceSettings.get_string("accent-color");
 
 		// Map GNOME accent colors to RGBA values with alpha 0.4
@@ -272,7 +261,7 @@ export class ConfigManager {
 
 	// --- GSettings change handling -----------------------------------------
 
-	_onSettingChanged(_key) {
+	_onSettingChanged() {
 		this._init();
 		this._notifyConfigChange("settings-changed");
 	}
@@ -320,11 +309,8 @@ export class ConfigManager {
 	 */
 	destroy() {
 		// Disconnect settings signals
-		for (const { object, id } of this._settingsConnections) {
-			object.disconnect(id);
-		}
-
-		this._settingsConnections = [];
+		this._settings.disconnectObject(this);
+		this._interfaceSettings.disconnectObject(this);
 		this._configChangeCallbacks.clear();
 	}
 

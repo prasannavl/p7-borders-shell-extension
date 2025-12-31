@@ -6,7 +6,7 @@
 
 import Meta from "gi://Meta";
 
-function _normalizeMaximize(metaWindow) {
+export function getMaximizeState(metaWindow) {
 	const flags = metaWindow.get_maximize_flags?.() ?? 0;
 	const hFlag = Meta.MaximizeFlags.HORIZONTAL ?? 1;
 	const vFlag = Meta.MaximizeFlags.VERTICAL ?? 2;
@@ -26,22 +26,14 @@ function _normalizeMaximize(metaWindow) {
 	return { any, full, horizontal, vertical };
 }
 
-export function getMaximizeState(metaWindow) {
-	return _normalizeMaximize(metaWindow);
-}
-
-export function getWindowState(
-	metaWindow,
-	actor,
-	box,
-	maximizeOverride = null,
-) {
+export function getWindowState(metaWindow, actor, maximizeOverride = null) {
+	const box = actor.get_allocation_box();
 	const width = box.x2 - box.x1;
 	const height = box.y2 - box.y1;
 
 	const frame = metaWindow.get_frame_rect();
 	const workarea = metaWindow.get_work_area_current_monitor();
-	const maximize = maximizeOverride ?? _normalizeMaximize(metaWindow);
+	const maximize = maximizeOverride ?? getMaximizeState(metaWindow);
 
 	return {
 		actorSize: { width, height },
@@ -53,10 +45,10 @@ export function getWindowState(
 	};
 }
 
-export function applyBorderState(border, state, borderColor) {
+export function applyBorderState(border, state, borderColor, cache) {
 	if (!state.visible) {
 		border.visible = false;
-		border._lastStyleKey = null;
+		if (cache) cache.borderStyleCache = null;
 		return;
 	}
 
@@ -68,8 +60,7 @@ export function applyBorderState(border, state, borderColor) {
 		`${borderWidths.top},${borderWidths.right},${borderWidths.bottom},${borderWidths.left}|` +
 		`${radius.tl},${radius.tr},${radius.br},${radius.bl}|${borderColor}`;
 
-	if (border._lastStyleKey !== styleKey) {
-		border._lastStyleKey = styleKey;
+	if (cache?.borderStyleCache !== styleKey) {
 		const styleString =
 			`border-top-width: ${borderWidths.top}px;` +
 			`border-right-width: ${borderWidths.right}px;` +
@@ -83,4 +74,5 @@ export function applyBorderState(border, state, borderColor) {
 	}
 
 	border.visible = true;
+	if (cache) cache.borderStyleCache = styleKey;
 }

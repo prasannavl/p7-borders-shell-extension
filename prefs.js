@@ -37,6 +37,15 @@ function setEntryRowPlaceholder(row, text) {
 	delegate.set_placeholder_text(text);
 }
 
+function clearGroupChildren(group) {
+	let child = group.get_first_child();
+	while (child) {
+		const next = child.get_next_sibling();
+		group.remove(child);
+		child = next;
+	}
+}
+
 function createPresetModel(presets) {
 	const model = new Gtk.StringList();
 	model.append(CUSTOM_LABEL);
@@ -162,29 +171,29 @@ function createConfigEditor() {
 	}
 
 	function connectHandlers({ isCustom, setConfigValue, onReset }) {
-		resetButton.connect("clicked", () => {
+		resetButton.connectObject("clicked", () => {
 			if (!isCustom()) return;
 			onReset();
-		});
+		}, resetButton);
 
-		enabledRow.connect("notify::active", () => {
+		enabledRow.connectObject("notify::active", () => {
 			if (updating || !isCustom()) return;
 			setConfigValue((config) => {
 				config.enabled = enabledRow.active;
 			});
-		});
-		maximizedRow.connect("notify::active", () => {
+		}, enabledRow);
+		maximizedRow.connectObject("notify::active", () => {
 			if (updating || !isCustom()) return;
 			setConfigValue((config) => {
 				config.maximizedBorder = maximizedRow.active;
 			});
-		});
-		widthRow.connect("notify::value", () => {
+		}, maximizedRow);
+		widthRow.connectObject("notify::value", () => {
 			if (updating || !isCustom()) return;
 			setConfigValue((config) => {
 				config.width = Math.round(widthRow.value);
 			});
-		});
+		}, widthRow);
 
 		const marginsRows = [
 			[marginsTopRow, "top"],
@@ -193,13 +202,13 @@ function createConfigEditor() {
 			[marginsLeftRow, "left"],
 		];
 		for (const [row, side] of marginsRows) {
-			row.connect("notify::value", () => {
+			row.connectObject("notify::value", () => {
 				if (updating || !isCustom()) return;
 				setConfigValue((config) => {
 					if (!isObject(config.margins)) config.margins = {};
 					config.margins[side] = Math.round(row.value);
 				});
-			});
+			}, row);
 		}
 
 		const radiusRows = [
@@ -209,31 +218,31 @@ function createConfigEditor() {
 			[radiusBlRow, "bl"],
 		];
 		for (const [row, corner] of radiusRows) {
-			row.connect("notify::value", () => {
+			row.connectObject("notify::value", () => {
 				if (updating || !isCustom()) return;
 				setConfigValue((config) => {
 					if (!isObject(config.radius)) config.radius = {};
 					config.radius[corner] = Math.round(row.value);
 				});
-			});
+			}, row);
 		}
 
-		activeColorRow.connect("notify::text", () => {
+		activeColorRow.connectObject("notify::text", () => {
 			if (updating || !isCustom()) return;
 			const text = activeColorRow.text.trim();
 			setConfigValue((config) => {
 				if (text) config.activeColor = text;
 				else delete config.activeColor;
 			});
-		});
-		inactiveColorRow.connect("notify::text", () => {
+		}, activeColorRow);
+		inactiveColorRow.connectObject("notify::text", () => {
 			if (updating || !isCustom()) return;
 			const text = inactiveColorRow.text.trim();
 			setConfigValue((config) => {
 				if (text) config.inactiveColor = text;
 				else delete config.inactiveColor;
 			});
-		});
+		}, inactiveColorRow);
 	}
 
 	return {
@@ -392,12 +401,12 @@ function buildConfigRow({
 			tooltip_text: "Remove",
 			css_classes: ["destructive-action"],
 		});
-		removeButton.connect("clicked", () => {
+		removeButton.connectObject("clicked", () => {
 			const rawConfigs = getRawConfigs();
 			delete rawConfigs[currentKey];
 			saveConfigs();
 			refreshList();
-		});
+		}, removeButton);
 		expander.add_suffix(removeButton);
 	}
 
@@ -438,8 +447,8 @@ function buildConfigRow({
 			refreshList();
 		};
 
-		renameButton.connect("clicked", tryRename);
-		keyRow.connect("activate", tryRename);
+		renameButton.connectObject("clicked", tryRename, renameButton);
+		keyRow.connectObject("activate", tryRename, keyRow);
 	} else {
 		keyRow.sensitive = false;
 	}
@@ -537,7 +546,7 @@ function buildConfigRow({
 	}
 
 	if (presetRow) {
-		presetRow.connect("notify::selected", () => {
+		presetRow.connectObject("notify::selected", () => {
 			if (updating) return;
 			const selected = presetRow.selected;
 			if (selected === 0) {
@@ -559,7 +568,7 @@ function buildConfigRow({
 			expander.subtitle = `Preset: ${preset}`;
 			setCustomSensitive(false);
 			applyConfig(getPresetConfig(preset));
-		});
+		}, presetRow);
 	}
 
 	editor.connectHandlers({
@@ -672,12 +681,7 @@ function buildConfigsPage(settings) {
 	}
 
 	function refreshList() {
-		let child = listGroup.get_first_child();
-		while (child) {
-			const next = child.get_next_sibling();
-			listGroup.remove(child);
-			child = next;
-		}
+		clearGroupChildren(listGroup);
 
 		const appKeys = Object.keys(rawConfigs)
 			.filter((key) => !key.startsWith("@"))
@@ -715,7 +719,7 @@ function buildConfigsPage(settings) {
 		updateAddButtonState();
 	}
 
-	addButton.connect("clicked", () => {
+	addButton.connectObject("clicked", () => {
 		const key = addEntry.text.trim();
 		if (!key || key.startsWith("@")) return;
 		if (rawConfigs[key]) return;
@@ -729,12 +733,12 @@ function buildConfigsPage(settings) {
 		saveConfigs();
 		refreshList();
 		resetAddForm();
-	});
+	}, addButton);
 
-	addEntry.connect("changed", updateAddButtonState);
-	addEntry.connect("activate", () => addButton.emit("clicked"));
+	addEntry.connectObject("changed", updateAddButtonState, addEntry);
+	addEntry.connectObject("activate", () => addButton.emit("clicked"), addEntry);
 
-	addPresetRow.connect("notify::selected", () => {
+	addPresetRow.connectObject("notify::selected", () => {
 		if (addPresetUpdating) return;
 		const presets = getPresetKeys(rawConfigs, false);
 		const selected = addPresetRow.selected;
@@ -752,7 +756,7 @@ function buildConfigsPage(settings) {
 		addDraftPreset = preset;
 		addEditor.setCustomSensitive(false);
 		addEditor.applyConfig(getPresetConfig(preset));
-	});
+	}, addPresetRow);
 
 	addEditor.connectHandlers({
 		isCustom: () => addIsCustom,
@@ -767,10 +771,10 @@ function buildConfigsPage(settings) {
 
 	addEditor.applyConfig(addDraftConfig);
 
-	settings.connect(`changed::${APP_CONFIGS_KEY}`, () => {
+	settings.connectObject(`changed::${APP_CONFIGS_KEY}`, () => {
 		rawConfigs = parseAppConfigs(settings);
 		refreshList();
-	});
+	}, settings);
 
 	refreshList();
 
@@ -845,12 +849,7 @@ function buildPresetsPage(settings) {
 	}
 
 	function refreshList() {
-		let child = listGroup.get_first_child();
-		while (child) {
-			const next = child.get_next_sibling();
-			listGroup.remove(child);
-			child = next;
-		}
+		clearGroupChildren(listGroup);
 
 		const presetKeys = getPresetKeys(rawConfigs, true);
 
@@ -884,7 +883,7 @@ function buildPresetsPage(settings) {
 		updateAddButtonState();
 	}
 
-	addButton.connect("clicked", () => {
+	addButton.connectObject("clicked", () => {
 		const key = addEntry.text.trim();
 		if (!key || !key.startsWith("@")) return;
 		if (rawConfigs[key]) return;
@@ -894,12 +893,12 @@ function buildPresetsPage(settings) {
 		addEntry.text = "";
 		addDraftConfig = {};
 		addEditor.applyConfig(addDraftConfig);
-	});
+	}, addButton);
 
-	addEntry.connect("changed", () => {
+	addEntry.connectObject("changed", () => {
 		updateAddButtonState();
-	});
-	addEntry.connect("activate", () => addButton.emit("clicked"));
+	}, addEntry);
+	addEntry.connectObject("activate", () => addButton.emit("clicked"), addEntry);
 
 	addEditor.connectHandlers({
 		isCustom: () => true,
@@ -915,10 +914,10 @@ function buildPresetsPage(settings) {
 	addEditor.applyConfig(addDraftConfig);
 	updateAddButtonState();
 
-	settings.connect(`changed::${APP_CONFIGS_KEY}`, () => {
+	settings.connectObject(`changed::${APP_CONFIGS_KEY}`, () => {
 		rawConfigs = parseAppConfigs(settings);
 		refreshList();
-	});
+	}, settings);
 
 	refreshList();
 
@@ -984,12 +983,12 @@ function buildRawConfigPage(settings) {
 
 	setBufferFromConfigs(parseAppConfigs(settings));
 
-	textBuffer.connect("changed", () => {
+	textBuffer.connectObject("changed", () => {
 		if (updating) return;
 		dirty = true;
-	});
+	}, textBuffer);
 
-	applyButton.connect("clicked", () => {
+	applyButton.connectObject("clicked", () => {
 		const rawText = getBufferText().trim();
 		if (!rawText) return;
 		let parsed = null;
@@ -1001,12 +1000,12 @@ function buildRawConfigPage(settings) {
 		if (!isObject(parsed)) return;
 		saveAppConfigs(settings, parsed);
 		setBufferFromConfigs(parsed);
-	});
+	}, applyButton);
 
-	settings.connect(`changed::${APP_CONFIGS_KEY}`, () => {
+	settings.connectObject(`changed::${APP_CONFIGS_KEY}`, () => {
 		if (dirty) return;
 		setBufferFromConfigs(parseAppConfigs(settings));
-	});
+	}, settings);
 
 	page.add(group);
 	return page;
