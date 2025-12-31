@@ -300,7 +300,9 @@ export class BorderManager {
 		const lastData = this._lastFocusedWindow
 			? this._windowData.get(this._lastFocusedWindow)
 			: null;
-		const currentData = currentFocus ? this._windowData.get(currentFocus) : null;
+		const currentData = currentFocus
+			? this._windowData.get(currentFocus)
+			: null;
 
 		const lastValid =
 			lastData &&

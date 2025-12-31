@@ -171,29 +171,45 @@ function createConfigEditor() {
 	}
 
 	function connectHandlers({ isCustom, setConfigValue, onReset }) {
-		resetButton.connectObject("clicked", () => {
-			if (!isCustom()) return;
-			onReset();
-		}, resetButton);
+		resetButton.connectObject(
+			"clicked",
+			() => {
+				if (!isCustom()) return;
+				onReset();
+			},
+			resetButton,
+		);
 
-		enabledRow.connectObject("notify::active", () => {
-			if (updating || !isCustom()) return;
-			setConfigValue((config) => {
-				config.enabled = enabledRow.active;
-			});
-		}, enabledRow);
-		maximizedRow.connectObject("notify::active", () => {
-			if (updating || !isCustom()) return;
-			setConfigValue((config) => {
-				config.maximizedBorder = maximizedRow.active;
-			});
-		}, maximizedRow);
-		widthRow.connectObject("notify::value", () => {
-			if (updating || !isCustom()) return;
-			setConfigValue((config) => {
-				config.width = Math.round(widthRow.value);
-			});
-		}, widthRow);
+		enabledRow.connectObject(
+			"notify::active",
+			() => {
+				if (updating || !isCustom()) return;
+				setConfigValue((config) => {
+					config.enabled = enabledRow.active;
+				});
+			},
+			enabledRow,
+		);
+		maximizedRow.connectObject(
+			"notify::active",
+			() => {
+				if (updating || !isCustom()) return;
+				setConfigValue((config) => {
+					config.maximizedBorder = maximizedRow.active;
+				});
+			},
+			maximizedRow,
+		);
+		widthRow.connectObject(
+			"notify::value",
+			() => {
+				if (updating || !isCustom()) return;
+				setConfigValue((config) => {
+					config.width = Math.round(widthRow.value);
+				});
+			},
+			widthRow,
+		);
 
 		const marginsRows = [
 			[marginsTopRow, "top"],
@@ -202,13 +218,17 @@ function createConfigEditor() {
 			[marginsLeftRow, "left"],
 		];
 		for (const [row, side] of marginsRows) {
-			row.connectObject("notify::value", () => {
-				if (updating || !isCustom()) return;
-				setConfigValue((config) => {
-					if (!isObject(config.margins)) config.margins = {};
-					config.margins[side] = Math.round(row.value);
-				});
-			}, row);
+			row.connectObject(
+				"notify::value",
+				() => {
+					if (updating || !isCustom()) return;
+					setConfigValue((config) => {
+						if (!isObject(config.margins)) config.margins = {};
+						config.margins[side] = Math.round(row.value);
+					});
+				},
+				row,
+			);
 		}
 
 		const radiusRows = [
@@ -218,31 +238,43 @@ function createConfigEditor() {
 			[radiusBlRow, "bl"],
 		];
 		for (const [row, corner] of radiusRows) {
-			row.connectObject("notify::value", () => {
-				if (updating || !isCustom()) return;
-				setConfigValue((config) => {
-					if (!isObject(config.radius)) config.radius = {};
-					config.radius[corner] = Math.round(row.value);
-				});
-			}, row);
+			row.connectObject(
+				"notify::value",
+				() => {
+					if (updating || !isCustom()) return;
+					setConfigValue((config) => {
+						if (!isObject(config.radius)) config.radius = {};
+						config.radius[corner] = Math.round(row.value);
+					});
+				},
+				row,
+			);
 		}
 
-		activeColorRow.connectObject("notify::text", () => {
-			if (updating || !isCustom()) return;
-			const text = activeColorRow.text.trim();
-			setConfigValue((config) => {
-				if (text) config.activeColor = text;
-				else delete config.activeColor;
-			});
-		}, activeColorRow);
-		inactiveColorRow.connectObject("notify::text", () => {
-			if (updating || !isCustom()) return;
-			const text = inactiveColorRow.text.trim();
-			setConfigValue((config) => {
-				if (text) config.inactiveColor = text;
-				else delete config.inactiveColor;
-			});
-		}, inactiveColorRow);
+		activeColorRow.connectObject(
+			"notify::text",
+			() => {
+				if (updating || !isCustom()) return;
+				const text = activeColorRow.text.trim();
+				setConfigValue((config) => {
+					if (text) config.activeColor = text;
+					else delete config.activeColor;
+				});
+			},
+			activeColorRow,
+		);
+		inactiveColorRow.connectObject(
+			"notify::text",
+			() => {
+				if (updating || !isCustom()) return;
+				const text = inactiveColorRow.text.trim();
+				setConfigValue((config) => {
+					if (text) config.inactiveColor = text;
+					else delete config.inactiveColor;
+				});
+			},
+			inactiveColorRow,
+		);
 	}
 
 	return {
@@ -401,12 +433,16 @@ function buildConfigRow({
 			tooltip_text: "Remove",
 			css_classes: ["destructive-action"],
 		});
-		removeButton.connectObject("clicked", () => {
-			const rawConfigs = getRawConfigs();
-			delete rawConfigs[currentKey];
-			saveConfigs();
-			refreshList();
-		}, removeButton);
+		removeButton.connectObject(
+			"clicked",
+			() => {
+				const rawConfigs = getRawConfigs();
+				delete rawConfigs[currentKey];
+				saveConfigs();
+				refreshList();
+			},
+			removeButton,
+		);
 		expander.add_suffix(removeButton);
 	}
 
@@ -546,29 +582,33 @@ function buildConfigRow({
 	}
 
 	if (presetRow) {
-		presetRow.connectObject("notify::selected", () => {
-			if (updating) return;
-			const selected = presetRow.selected;
-			if (selected === 0) {
-				const config = ensureCustomConfig(true);
-				isCustom = true;
-				expander.subtitle = "Custom";
-				setCustomSensitive(true);
-				applyConfig(config);
-				saveConfigs();
-				return;
-			}
+		presetRow.connectObject(
+			"notify::selected",
+			() => {
+				if (updating) return;
+				const selected = presetRow.selected;
+				if (selected === 0) {
+					const config = ensureCustomConfig(true);
+					isCustom = true;
+					expander.subtitle = "Custom";
+					setCustomSensitive(true);
+					applyConfig(config);
+					saveConfigs();
+					return;
+				}
 
-			const preset = availablePresets[selected - 1];
-			if (!preset) return;
-			const rawConfigs = getRawConfigs();
-			rawConfigs[currentKey] = preset;
-			saveConfigs();
-			isCustom = false;
-			expander.subtitle = `Preset: ${preset}`;
-			setCustomSensitive(false);
-			applyConfig(getPresetConfig(preset));
-		}, presetRow);
+				const preset = availablePresets[selected - 1];
+				if (!preset) return;
+				const rawConfigs = getRawConfigs();
+				rawConfigs[currentKey] = preset;
+				saveConfigs();
+				isCustom = false;
+				expander.subtitle = `Preset: ${preset}`;
+				setCustomSensitive(false);
+				applyConfig(getPresetConfig(preset));
+			},
+			presetRow,
+		);
 	}
 
 	editor.connectHandlers({
@@ -719,44 +759,52 @@ function buildConfigsPage(settings) {
 		updateAddButtonState();
 	}
 
-	addButton.connectObject("clicked", () => {
-		const key = addEntry.text.trim();
-		if (!key || key.startsWith("@")) return;
-		if (rawConfigs[key]) return;
-		if (addIsCustom) {
-			rawConfigs[key] = copyObject(addDraftConfig);
-		} else if (addDraftPreset) {
-			rawConfigs[key] = addDraftPreset;
-		} else {
-			rawConfigs[key] = {};
-		}
-		saveConfigs();
-		refreshList();
-		resetAddForm();
-	}, addButton);
+	addButton.connectObject(
+		"clicked",
+		() => {
+			const key = addEntry.text.trim();
+			if (!key || key.startsWith("@")) return;
+			if (rawConfigs[key]) return;
+			if (addIsCustom) {
+				rawConfigs[key] = copyObject(addDraftConfig);
+			} else if (addDraftPreset) {
+				rawConfigs[key] = addDraftPreset;
+			} else {
+				rawConfigs[key] = {};
+			}
+			saveConfigs();
+			refreshList();
+			resetAddForm();
+		},
+		addButton,
+	);
 
 	addEntry.connectObject("changed", updateAddButtonState, addEntry);
 	addEntry.connectObject("activate", () => addButton.emit("clicked"), addEntry);
 
-	addPresetRow.connectObject("notify::selected", () => {
-		if (addPresetUpdating) return;
-		const presets = getPresetKeys(rawConfigs, false);
-		const selected = addPresetRow.selected;
-		if (selected === 0) {
-			addIsCustom = true;
-			addDraftPreset = null;
-			addEditor.setCustomSensitive(true);
-			addEditor.applyConfig(addDraftConfig);
-			return;
-		}
+	addPresetRow.connectObject(
+		"notify::selected",
+		() => {
+			if (addPresetUpdating) return;
+			const presets = getPresetKeys(rawConfigs, false);
+			const selected = addPresetRow.selected;
+			if (selected === 0) {
+				addIsCustom = true;
+				addDraftPreset = null;
+				addEditor.setCustomSensitive(true);
+				addEditor.applyConfig(addDraftConfig);
+				return;
+			}
 
-		const preset = presets[selected - 1];
-		if (!preset) return;
-		addIsCustom = false;
-		addDraftPreset = preset;
-		addEditor.setCustomSensitive(false);
-		addEditor.applyConfig(getPresetConfig(preset));
-	}, addPresetRow);
+			const preset = presets[selected - 1];
+			if (!preset) return;
+			addIsCustom = false;
+			addDraftPreset = preset;
+			addEditor.setCustomSensitive(false);
+			addEditor.applyConfig(getPresetConfig(preset));
+		},
+		addPresetRow,
+	);
 
 	addEditor.connectHandlers({
 		isCustom: () => addIsCustom,
@@ -771,10 +819,14 @@ function buildConfigsPage(settings) {
 
 	addEditor.applyConfig(addDraftConfig);
 
-	settings.connectObject(`changed::${APP_CONFIGS_KEY}`, () => {
-		rawConfigs = parseAppConfigs(settings);
-		refreshList();
-	}, settings);
+	settings.connectObject(
+		`changed::${APP_CONFIGS_KEY}`,
+		() => {
+			rawConfigs = parseAppConfigs(settings);
+			refreshList();
+		},
+		settings,
+	);
 
 	refreshList();
 
@@ -883,21 +935,29 @@ function buildPresetsPage(settings) {
 		updateAddButtonState();
 	}
 
-	addButton.connectObject("clicked", () => {
-		const key = addEntry.text.trim();
-		if (!key || !key.startsWith("@")) return;
-		if (rawConfigs[key]) return;
-		rawConfigs[key] = copyObject(addDraftConfig);
-		saveConfigs();
-		refreshList();
-		addEntry.text = "";
-		addDraftConfig = {};
-		addEditor.applyConfig(addDraftConfig);
-	}, addButton);
+	addButton.connectObject(
+		"clicked",
+		() => {
+			const key = addEntry.text.trim();
+			if (!key || !key.startsWith("@")) return;
+			if (rawConfigs[key]) return;
+			rawConfigs[key] = copyObject(addDraftConfig);
+			saveConfigs();
+			refreshList();
+			addEntry.text = "";
+			addDraftConfig = {};
+			addEditor.applyConfig(addDraftConfig);
+		},
+		addButton,
+	);
 
-	addEntry.connectObject("changed", () => {
-		updateAddButtonState();
-	}, addEntry);
+	addEntry.connectObject(
+		"changed",
+		() => {
+			updateAddButtonState();
+		},
+		addEntry,
+	);
 	addEntry.connectObject("activate", () => addButton.emit("clicked"), addEntry);
 
 	addEditor.connectHandlers({
@@ -914,10 +974,14 @@ function buildPresetsPage(settings) {
 	addEditor.applyConfig(addDraftConfig);
 	updateAddButtonState();
 
-	settings.connectObject(`changed::${APP_CONFIGS_KEY}`, () => {
-		rawConfigs = parseAppConfigs(settings);
-		refreshList();
-	}, settings);
+	settings.connectObject(
+		`changed::${APP_CONFIGS_KEY}`,
+		() => {
+			rawConfigs = parseAppConfigs(settings);
+			refreshList();
+		},
+		settings,
+	);
 
 	refreshList();
 
@@ -983,29 +1047,41 @@ function buildRawConfigPage(settings) {
 
 	setBufferFromConfigs(parseAppConfigs(settings));
 
-	textBuffer.connectObject("changed", () => {
-		if (updating) return;
-		dirty = true;
-	}, textBuffer);
+	textBuffer.connectObject(
+		"changed",
+		() => {
+			if (updating) return;
+			dirty = true;
+		},
+		textBuffer,
+	);
 
-	applyButton.connectObject("clicked", () => {
-		const rawText = getBufferText().trim();
-		if (!rawText) return;
-		let parsed = null;
-		try {
-			parsed = JSON.parse(rawText);
-		} catch (_err) {
-			return;
-		}
-		if (!isObject(parsed)) return;
-		saveAppConfigs(settings, parsed);
-		setBufferFromConfigs(parsed);
-	}, applyButton);
+	applyButton.connectObject(
+		"clicked",
+		() => {
+			const rawText = getBufferText().trim();
+			if (!rawText) return;
+			let parsed = null;
+			try {
+				parsed = JSON.parse(rawText);
+			} catch (_err) {
+				return;
+			}
+			if (!isObject(parsed)) return;
+			saveAppConfigs(settings, parsed);
+			setBufferFromConfigs(parsed);
+		},
+		applyButton,
+	);
 
-	settings.connectObject(`changed::${APP_CONFIGS_KEY}`, () => {
-		if (dirty) return;
-		setBufferFromConfigs(parseAppConfigs(settings));
-	}, settings);
+	settings.connectObject(
+		`changed::${APP_CONFIGS_KEY}`,
+		() => {
+			if (dirty) return;
+			setBufferFromConfigs(parseAppConfigs(settings));
+		},
+		settings,
+	);
 
 	page.add(group);
 	return page;

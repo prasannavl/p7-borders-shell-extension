@@ -16,14 +16,22 @@ export class ConfigManager {
 		this._configChangeCallbacks = new Set();
 
 		// Connect to settings changes
-		this._settings.connectObject("changed", (_settings, key) => {
-			this._onSettingChanged(key);
-		}, this);
+		this._settings.connectObject(
+			"changed",
+			(_settings, key) => {
+				this._onSettingChanged(key);
+			},
+			this,
+		);
 
 		// Connect to accent color changes
-		this._interfaceSettings.connectObject("changed::accent-color", () => {
-			this._onAccentColorChanged();
-		}, this);
+		this._interfaceSettings.connectObject(
+			"changed::accent-color",
+			() => {
+				this._onAccentColorChanged();
+			},
+			this,
+		);
 
 		// Initialize config from gsettings or set defaults
 		this.appConfigFallback = {};
