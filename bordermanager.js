@@ -2,10 +2,7 @@ import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import {
-	applyBorderState,
-	getWindowState,
-} from "./compat.js";
+import { applyBorderState, getWindowState } from "./compat.js";
 import { ConfigManager } from "./config.js";
 
 export class BorderManager {
