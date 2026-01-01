@@ -1027,14 +1027,16 @@ export default class P7BordersPreferences extends ExtensionPreferences {
 		const registerSettingsHandler = (handler) => {
 			if (typeof handler === "function") settingsHandlers.push(handler);
 		};
-		settings.connectObject(
+		const settingsChangedId = settings.connect(
 			`changed::${APP_CONFIGS_KEY}`,
 			() => {
 				const configs = parseAppConfigs(settings);
 				for (const handler of settingsHandlers) handler(configs);
 			},
-			window,
 		);
+		window.connect("destroy", () => {
+			settings.disconnect(settingsChangedId);
+		});
 		window.set_default_size(760, 640);
 		window.add(buildGlobalPage(settings));
 		window.add(
