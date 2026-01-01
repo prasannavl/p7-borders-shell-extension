@@ -37,38 +37,6 @@ function setEntryRowPlaceholder(row, text) {
 	delegate.set_placeholder_text(text);
 }
 
-function createSignals(owner) {
-	const connections = [];
-	let cleaned = false;
-
-	function disconnectAll() {
-		if (cleaned) return;
-		cleaned = true;
-		for (const [target, id] of connections) {
-			if (target && id) target.disconnect(id);
-		}
-		connections.length = 0;
-	}
-
-	function connect(target, signal, handler) {
-		const id = target.connect(signal, handler);
-		connections.push([target, id]);
-		return id;
-	}
-
-	if (owner) {
-		owner.connect("destroy", disconnectAll);
-		if (owner.connect) {
-			owner.connect("close-request", () => {
-				disconnectAll();
-				return false;
-			});
-		}
-	}
-
-	return { connect, disconnectAll };
-}
-
 function createSpinRow({ title, subtitle, lower, upper, step = 1 }) {
 	const params = {
 		title,
@@ -215,25 +183,25 @@ function createConfigEditor() {
 		updating = false;
 	}
 
-	function connectHandlers({ signals, isCustom, setConfigValue, onReset }) {
-		signals.connect(resetButton, "clicked", () => {
+	function connectHandlers({ isCustom, setConfigValue, onReset }) {
+		resetButton.connect("clicked", () => {
 			if (!isCustom()) return;
 			onReset();
 		});
 
-		signals.connect(enabledRow, "notify::active", () => {
+		enabledRow.connect("notify::active", () => {
 			if (updating || !isCustom()) return;
 			setConfigValue((config) => {
 				config.enabled = enabledRow.active;
 			});
 		});
-		signals.connect(maximizedRow, "notify::active", () => {
+		maximizedRow.connect("notify::active", () => {
 			if (updating || !isCustom()) return;
 			setConfigValue((config) => {
 				config.maximizedBorder = maximizedRow.active;
 			});
 		});
-		signals.connect(widthRow, "notify::value", () => {
+		widthRow.connect("notify::value", () => {
 			if (updating || !isCustom()) return;
 			setConfigValue((config) => {
 				config.width = Math.round(widthRow.value);
@@ -247,7 +215,7 @@ function createConfigEditor() {
 			[marginsLeftRow, "left"],
 		];
 		for (const [row, side] of marginsRows) {
-			signals.connect(row, "notify::value", () => {
+			row.connect("notify::value", () => {
 				if (updating || !isCustom()) return;
 				setConfigValue((config) => {
 					if (!isObject(config.margins)) config.margins = {};
@@ -263,7 +231,7 @@ function createConfigEditor() {
 			[radiusBlRow, "bl"],
 		];
 		for (const [row, corner] of radiusRows) {
-			signals.connect(row, "notify::value", () => {
+			row.connect("notify::value", () => {
 				if (updating || !isCustom()) return;
 				setConfigValue((config) => {
 					if (!isObject(config.radius)) config.radius = {};
@@ -272,7 +240,7 @@ function createConfigEditor() {
 			});
 		}
 
-		signals.connect(activeColorRow, "notify::text", () => {
+		activeColorRow.connect("notify::text", () => {
 			if (updating || !isCustom()) return;
 			const text = activeColorRow.text.trim();
 			setConfigValue((config) => {
@@ -280,7 +248,7 @@ function createConfigEditor() {
 				else delete config.activeColor;
 			});
 		});
-		signals.connect(inactiveColorRow, "notify::text", () => {
+		inactiveColorRow.connect("notify::text", () => {
 			if (updating || !isCustom()) return;
 			const text = inactiveColorRow.text.trim();
 			setConfigValue((config) => {
@@ -298,7 +266,7 @@ function createConfigEditor() {
 	};
 }
 
-function buildGlobalPage(settings, signals) {
+function buildGlobalPage(settings) {
 	const page = new Adw.PreferencesPage({
 		title: "Global",
 		icon_name: "preferences-system-symbolic",
@@ -425,7 +393,6 @@ function getPresetKeys(rawConfigs, includeDefault) {
 }
 
 function buildConfigRow({
-	signals,
 	key,
 	getRawConfigs,
 	saveConfigs,
@@ -446,7 +413,7 @@ function buildConfigRow({
 			tooltip_text: "Remove",
 			css_classes: ["destructive-action"],
 		});
-		signals.connect(removeButton, "clicked", () => {
+		removeButton.connect("clicked", () => {
 			const rawConfigs = getRawConfigs();
 			delete rawConfigs[currentKey];
 			saveConfigs();
@@ -492,8 +459,8 @@ function buildConfigRow({
 			refreshList();
 		};
 
-		signals.connect(renameButton, "clicked", tryRename);
-		signals.connect(keyRow, "activate", tryRename);
+		renameButton.connect("clicked", tryRename);
+		keyRow.connect("activate", tryRename);
 	} else {
 		keyRow.sensitive = false;
 	}
@@ -589,7 +556,7 @@ function buildConfigRow({
 	}
 
 	if (presetRow) {
-		signals.connect(presetRow, "notify::selected", () => {
+		presetRow.connect("notify::selected", () => {
 			if (updating) return;
 			const selected = presetRow.selected;
 			if (selected === 0) {
@@ -615,7 +582,6 @@ function buildConfigRow({
 	}
 
 	editor.connectHandlers({
-		signals,
 		isCustom: () => isCustom,
 		setConfigValue,
 		onReset: () => {
@@ -629,12 +595,12 @@ function buildConfigRow({
 	return expander;
 }
 
-function buildConfigsPage(settings, signals) {
+function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 	const page = new Adw.PreferencesPage({
 		title: "App Configs",
 		icon_name: "application-x-executable-symbolic",
 	});
-	let rawConfigs = parseAppConfigs(settings);
+	let rawConfigs = initialConfigs;
 	const getRawConfigs = () => rawConfigs;
 	const saveConfigs = () => saveAppConfigs(settings, rawConfigs);
 	const isValidKey = (candidate) => candidate && !candidate.startsWith("@");
@@ -744,7 +710,6 @@ function buildConfigsPage(settings, signals) {
 		for (const key of appKeys) {
 			listGroup.add(
 				buildConfigRow({
-					signals,
 					key,
 					getRawConfigs,
 					saveConfigs,
@@ -763,7 +728,7 @@ function buildConfigsPage(settings, signals) {
 		updateAddButtonState();
 	}
 
-	signals.connect(addButton, "clicked", () => {
+	addButton.connect("clicked", () => {
 		const key = addEntry.text.trim();
 		if (!key || key.startsWith("@")) return;
 		if (rawConfigs[key]) return;
@@ -779,10 +744,10 @@ function buildConfigsPage(settings, signals) {
 		resetAddForm();
 	});
 
-	signals.connect(addEntry, "changed", updateAddButtonState);
-	signals.connect(addEntry, "activate", () => addButton.emit("clicked"));
+	addEntry.connect("changed", updateAddButtonState);
+	addEntry.connect("activate", () => addButton.emit("clicked"));
 
-	signals.connect(addPresetRow, "notify::selected", () => {
+	addPresetRow.connect("notify::selected", () => {
 		if (addPresetUpdating) return;
 		const presets = getPresetKeys(rawConfigs, false);
 		const selected = addPresetRow.selected;
@@ -803,7 +768,6 @@ function buildConfigsPage(settings, signals) {
 	});
 
 	addEditor.connectHandlers({
-		signals,
 		isCustom: () => addIsCustom,
 		setConfigValue: (updater) => {
 			updater(addDraftConfig);
@@ -815,9 +779,8 @@ function buildConfigsPage(settings, signals) {
 	});
 
 	addEditor.applyConfig(addDraftConfig);
-
-	signals.connect(settings, `changed::${APP_CONFIGS_KEY}`, () => {
-		rawConfigs = parseAppConfigs(settings);
+	registerSettingsHandler((configs) => {
+		rawConfigs = configs;
 		refreshList();
 	});
 
@@ -828,12 +791,12 @@ function buildConfigsPage(settings, signals) {
 	return page;
 }
 
-function buildPresetsPage(settings, signals) {
+function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 	const page = new Adw.PreferencesPage({
 		title: "Presets",
 		icon_name: "view-list-symbolic",
 	});
-	let rawConfigs = parseAppConfigs(settings);
+	let rawConfigs = initialConfigs;
 	const getRawConfigs = () => rawConfigs;
 	const saveConfigs = () => saveAppConfigs(settings, rawConfigs);
 	const isValidKey = (candidate) => candidate?.startsWith("@");
@@ -911,7 +874,6 @@ function buildPresetsPage(settings, signals) {
 		for (const key of presetKeys) {
 			listGroup.add(
 				buildConfigRow({
-					signals,
 					key,
 					getRawConfigs,
 					saveConfigs,
@@ -929,7 +891,7 @@ function buildPresetsPage(settings, signals) {
 		updateAddButtonState();
 	}
 
-	signals.connect(addButton, "clicked", () => {
+	addButton.connect("clicked", () => {
 		const key = addEntry.text.trim();
 		if (!key || !key.startsWith("@")) return;
 		if (rawConfigs[key]) return;
@@ -941,13 +903,12 @@ function buildPresetsPage(settings, signals) {
 		addEditor.applyConfig(addDraftConfig);
 	});
 
-	signals.connect(addEntry, "changed", () => {
+	addEntry.connect("changed", () => {
 		updateAddButtonState();
 	});
-	signals.connect(addEntry, "activate", () => addButton.emit("clicked"));
+	addEntry.connect("activate", () => addButton.emit("clicked"));
 
 	addEditor.connectHandlers({
-		signals,
 		isCustom: () => true,
 		setConfigValue: (updater) => {
 			updater(addDraftConfig);
@@ -961,8 +922,8 @@ function buildPresetsPage(settings, signals) {
 	addEditor.applyConfig(addDraftConfig);
 	updateAddButtonState();
 
-	signals.connect(settings, `changed::${APP_CONFIGS_KEY}`, () => {
-		rawConfigs = parseAppConfigs(settings);
+	registerSettingsHandler((configs) => {
+		rawConfigs = configs;
 		refreshList();
 	});
 
@@ -973,7 +934,7 @@ function buildPresetsPage(settings, signals) {
 	return page;
 }
 
-function buildRawConfigPage(settings, signals) {
+function buildRawConfigPage(settings, initialConfigs, registerSettingsHandler) {
 	const page = new Adw.PreferencesPage({
 		title: "Raw Config",
 		icon_name: "text-x-generic-symbolic",
@@ -1028,14 +989,14 @@ function buildRawConfigPage(settings, signals) {
 		return textBuffer.get_text(start, end, false);
 	}
 
-	setBufferFromConfigs(parseAppConfigs(settings));
+	setBufferFromConfigs(initialConfigs);
 
-	signals.connect(textBuffer, "changed", () => {
+	textBuffer.connect("changed", () => {
 		if (updating) return;
 		dirty = true;
 	});
 
-	signals.connect(applyButton, "clicked", () => {
+	applyButton.connect("clicked", () => {
 		const rawText = getBufferText().trim();
 		if (!rawText) return;
 		let parsed = null;
@@ -1049,9 +1010,9 @@ function buildRawConfigPage(settings, signals) {
 		setBufferFromConfigs(parsed);
 	});
 
-	signals.connect(settings, `changed::${APP_CONFIGS_KEY}`, () => {
+	registerSettingsHandler((configs) => {
 		if (dirty) return;
-		setBufferFromConfigs(parseAppConfigs(settings));
+		setBufferFromConfigs(configs);
 	});
 
 	page.add(group);
@@ -1061,11 +1022,31 @@ function buildRawConfigPage(settings, signals) {
 export default class P7BordersPreferences extends ExtensionPreferences {
 	fillPreferencesWindow(window) {
 		const settings = this.getSettings();
-		const signals = createSignals(window);
+		const initialConfigs = parseAppConfigs(settings);
+		const settingsHandlers = [];
+		const registerSettingsHandler = (handler) => {
+			if (typeof handler === "function") settingsHandlers.push(handler);
+		};
+		const settingsChangedId = settings.connect(
+			`changed::${APP_CONFIGS_KEY}`,
+			() => {
+				const configs = parseAppConfigs(settings);
+				for (const handler of settingsHandlers) handler(configs);
+			},
+		);
+		window.connect("destroy", () => {
+			settings.disconnect(settingsChangedId);
+		});
 		window.set_default_size(760, 640);
-		window.add(buildGlobalPage(settings, signals));
-		window.add(buildPresetsPage(settings, signals));
-		window.add(buildConfigsPage(settings, signals));
-		window.add(buildRawConfigPage(settings, signals));
+		window.add(buildGlobalPage(settings));
+		window.add(
+			buildPresetsPage(settings, initialConfigs, registerSettingsHandler),
+		);
+		window.add(
+			buildConfigsPage(settings, initialConfigs, registerSettingsHandler),
+		);
+		window.add(
+			buildRawConfigPage(settings, initialConfigs, registerSettingsHandler),
+		);
 	}
 }
