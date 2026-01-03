@@ -56,10 +56,12 @@ export class BorderManager {
 
 	_isInterestingWindow(metaWindow) {
 		const type = metaWindow.get_window_type();
+		const WindowType = Meta.WindowType;
 		return (
-			type === Meta.WindowType.NORMAL ||
-			type === Meta.WindowType.DIALOG ||
-			type === Meta.WindowType.MODAL_DIALOG
+			!WindowType ||
+			type === WindowType.NORMAL ||
+			type === WindowType.DIALOG ||
+			type === WindowType.MODAL_DIALOG
 		);
 	}
 
@@ -335,10 +337,8 @@ export class BorderManager {
 		);
 
 		// Attach to existing windows
-		for (const actor of global.get_window_actors()) {
-			if (!actor) continue;
-			const win = actor.meta_window;
-			if (win) this._trackWindow(win);
+		for (const win of global.display.list_all_windows()) {
+			this._trackWindow(win);
 		}
 	}
 
@@ -415,11 +415,11 @@ function computeBorderState(windowState, config) {
 		!radiusEnabled || maximize.any
 			? ZERO_RADIUS
 			: {
-					tl: edges.top && edges.left ? 0 : radius.tl,
-					tr: edges.top && edges.right ? 0 : radius.tr,
-					br: edges.bottom && edges.right ? 0 : radius.br,
-					bl: edges.bottom && edges.left ? 0 : radius.bl,
-				};
+				tl: edges.top && edges.left ? 0 : radius.tl,
+				tr: edges.top && edges.right ? 0 : radius.tr,
+				br: edges.bottom && edges.right ? 0 : radius.br,
+				bl: edges.bottom && edges.left ? 0 : radius.bl,
+			};
 
 	const pos = {
 		x: -margins.left - borderWidths.left,
@@ -430,18 +430,18 @@ function computeBorderState(windowState, config) {
 		width: Math.max(
 			1,
 			width +
-				margins.left +
-				margins.right +
-				borderWidths.left +
-				borderWidths.right,
+			margins.left +
+			margins.right +
+			borderWidths.left +
+			borderWidths.right,
 		),
 		height: Math.max(
 			1,
 			height +
-				margins.top +
-				margins.bottom +
-				borderWidths.top +
-				borderWidths.bottom,
+			margins.top +
+			margins.bottom +
+			borderWidths.top +
+			borderWidths.bottom,
 		),
 	};
 
