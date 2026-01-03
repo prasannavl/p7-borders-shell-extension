@@ -2,7 +2,7 @@ UUID := p7-borders@prasannavl.com
 DIST_DIR := dist
 SCHEMAS_DIR := schemas
 JS_FILES := $(wildcard *.js)
-EXTRA_SOURCES := $(filter-out extension.js prefs.js,$(JS_FILES))
+EXTRA_SOURCES := $(filter-out extension.js prefs.js,$(JS_FILES)) README.md
 EXTRA_SOURCE_ARGS := $(foreach f,$(EXTRA_SOURCES),--extra-source=$(f))
 
 .PHONY: lint schemas version pack install enable disable reload clean
