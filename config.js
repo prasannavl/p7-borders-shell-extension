@@ -132,9 +132,10 @@ export class ConfigManager {
 				"class:libreoffice-draw": "@gtkPreset",
 				// Chrome
 				"regex.class:^google-chrome*": "@chromePreset",
+				// Chrome apps
 				"regex.class:^chrome-*": "@chromePreset",
+				// Chromium
 				"regex.class:^chromium*": "@chromePreset",
-				"regex.class:^chromium-*": "@chromePreset",
 				// Electron
 				"class:obsidian": "@electronPreset",
 				"class:zulip": "@electronPreset",

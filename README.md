@@ -160,6 +160,7 @@ The json config:
   # default 
   "regex.class:^google-chrome*": "@chromePreset",
   "regex.class:^chrome-*": "@chromePreset",
+  "regex.class:^chromeium*": "@chromePreset",
 ```
 
 Switch to:
@@ -168,7 +169,16 @@ Switch to:
   # default 
   "regex.class:^google-chrome*": "@chromeGtkPreset",
   "regex.class:^chrome-*": "@chromeGtkPreset",
+  "regex.class:^chromium*": "@chromeGtkPreset",
 ```
 
 The preset is already provided. Simply use the extension preferences to switch preset for the above. 
 
+### How do I reset all settings?
+
+You can reset all settings to their default values using the `dconf` command:
+
+```bash
+dconf reset -f /org/gnome/shell/extensions/p7-borders/
+```
+Disable and enable the extension and it will auto populate defaults into dconf again.
