@@ -133,6 +133,8 @@ export class ConfigManager {
 				// Chrome
 				"regex.class:^google-chrome*": "@chromePreset",
 				"regex.class:^chrome-*": "@chromePreset",
+				"regex.class:^chromium*": "@chromePreset",
+				"regex.class:^chromium-*": "@chromePreset",
 				// Electron
 				"class:obsidian": "@electronPreset",
 				"class:zulip": "@electronPreset",

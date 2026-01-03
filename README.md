@@ -149,3 +149,26 @@ By opt-in, we workaround these misaligned insets and lets us tune per-app
 margins and radii where they make sense. There are common presets where apps
 follow known toolkit standards. This for example is applied for `@gtkPreset`,
 `@adwPreset`, `@electronPreset` etc.
+
+### Why are my Chrome (or Chromium, Chrome Apps) borders off?
+
+The current default preset works with Chrome's native and Qt mode. If you use Gtk, then the border preset needs switching to `chromeGtkPreset` for both chrome and chrome apps. Chrome adds it's own borders and doesn't have consistent borders across all 3 modes.
+
+The json config: 
+
+```
+  # default 
+  "regex.class:^google-chrome*": "@chromePreset",
+  "regex.class:^chrome-*": "@chromePreset",
+```
+
+Switch to:
+
+```
+  # default 
+  "regex.class:^google-chrome*": "@chromeGtkPreset",
+  "regex.class:^chrome-*": "@chromeGtkPreset",
+```
+
+The preset is already provided. Simply use the extension preferences to switch preset for the above. 
+
