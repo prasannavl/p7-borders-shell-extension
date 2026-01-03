@@ -240,22 +240,28 @@ export class ConfigManager {
 			return activeColor;
 		}
 
-		const accentColor = this._interfaceSettings.get_string("accent-color");
+		// 'accent-color' was introduced in GNOME 47.
+		// Older versions (45/46) may not have this key in the schema.
+		if (this._interfaceSettings.settings_schema.has_key("accent-color")) {
+			const accentColor = this._interfaceSettings.get_string("accent-color");
 
-		// Map GNOME accent colors to RGBA values with alpha 0.4
-		const accentColorMap = {
-			blue: "rgba(53, 132, 228, 0.4)",
-			teal: "rgba(51, 209, 122, 0.4)",
-			green: "rgba(46, 194, 126, 0.4)",
-			yellow: "rgba(248, 228, 92, 0.4)",
-			orange: "rgba(255, 120, 0, 0.4)",
-			red: "rgba(237, 51, 59, 0.4)",
-			pink: "rgba(224, 27, 36, 0.4)",
-			purple: "rgba(145, 65, 172, 0.4)",
-			slate: "rgba(99, 104, 128, 0.4)",
-		};
+			// Map GNOME accent colors to RGBA values with alpha 0.4
+			const accentColorMap = {
+				blue: "rgba(53, 132, 228, 0.4)",
+				teal: "rgba(51, 209, 122, 0.4)",
+				green: "rgba(46, 194, 126, 0.4)",
+				yellow: "rgba(248, 228, 92, 0.4)",
+				orange: "rgba(255, 120, 0, 0.4)",
+				red: "rgba(237, 51, 59, 0.4)",
+				pink: "rgba(224, 27, 36, 0.4)",
+				purple: "rgba(145, 65, 172, 0.4)",
+				slate: "rgba(99, 104, 128, 0.4)",
+			};
 
-		return accentColorMap[accentColor] || defaultAccent;
+			return accentColorMap[accentColor] || defaultAccent;
+		}
+
+		return defaultAccent;
 	}
 
 	// --- GSettings change handling -----------------------------------------

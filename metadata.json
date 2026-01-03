@@ -4,6 +4,8 @@
 	"uuid": "p7-borders@prasannavl.com",
 	"url": "https://github.com/prasannavl/p7-borders-shell-extension",
 	"shell-version": [
+		"45",
+		"46",
 		"47",
 		"48",
 		"49"

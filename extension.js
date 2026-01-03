@@ -11,6 +11,14 @@ export default class P7BordersExtension extends Extension {
 		this._borderManager = null;
 	}
 
+	getLogger() {
+		if (typeof super.getLogger === "function") {
+			return super.getLogger();
+		}
+		// For compatibility with gnome 45
+		return console;
+	}
+
 	enable() {
 		this._logger = this.getLogger();
 		this._logger.log("Extension enabled");
