@@ -86,10 +86,6 @@ export class ConfigManager {
 				"@zeroPreset": { maximizedBorder: true },
 				"@zeroNoMaxPreset": { maximizedBorder: false },
 				"@electronPreset": { maximizedBorder: true },
-				"@chromePreset": {
-					margins: { top: -10, right: -16, bottom: -32, left: -16 },
-					radius: { tl: 12, tr: 12, br: 0, bl: 0 },
-				},
 				"@adwPreset": {
 					margins: -25,
 					radius: 18,
@@ -98,13 +94,21 @@ export class ConfigManager {
 					margins: { top: -22, right: -25, bottom: -28, left: -25 },
 					radius: { tl: 10, tr: 10, br: 0, bl: 0 },
 				},
-				"@zedPreset": {
-					margins: { top: -10, right: -11, bottom: -11, left: -10 },
-					radius: 14,
-				},
 				"@qtPreset": {
 					margins: { top: -25, right: -25, bottom: -24, left: -25 },
 					radius: { tl: 18, tr: 18, br: 0, bl: 0 },
+				},
+				"@chromePreset": {
+					margins: { top: -10, right: -16, bottom: -32, left: -16 },
+					radius: { tl: 12, tr: 12, br: 0, bl: 0 },
+				},
+				"@chromeGtkPreset": {
+					margins: { top: -8, right: -11, bottom: -13, left: -11 },
+					radius: { tl: 14, tr: 14, br: 0, bl: 0 },
+				},
+				"@zedPreset": {
+					margins: { top: -10, right: -11, bottom: -11, left: -10 },
+					radius: 14,
 				},
 				// Adw
 				"regex.class:^org.gnome.*": "@adwPreset",
