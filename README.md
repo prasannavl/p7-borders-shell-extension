@@ -4,7 +4,10 @@ Add per-window borders in GNOME Shell with per-side margins, per-corner radii,
 and edge-aware hiding. Borders are attached to each window actor and updated
 efficiently with cached inline styles.
 
-Compatibility: GNOME Shell 48 and 49.
+Compatibility: GNOME Shell 48+.
+Best effort compatibility: GNOME Shell 45+.
+
+Extension Store: https://extensions.gnome.org/extension/9064/p7-window-borders/
 
 ## Features
 
