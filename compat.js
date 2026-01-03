@@ -10,7 +10,7 @@ export function getMaximizeState(metaWindow) {
 	const flags = metaWindow.get_maximize_flags?.() ?? 0;
 	const hFlag = Meta.MaximizeFlags?.HORIZONTAL ?? 1;
 	const vFlag = Meta.MaximizeFlags?.VERTICAL ?? 2;
-	const bothFlag = Meta.MaximizeFlags?.BOTH ?? (hFlag | vFlag);
+	const bothFlag = Meta.MaximizeFlags?.BOTH ?? hFlag | vFlag;
 
 	let horizontal = (flags & hFlag) !== 0;
 	let vertical = (flags & vFlag) !== 0;
