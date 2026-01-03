@@ -112,6 +112,7 @@ export class ConfigManager {
 				"class:com.github.tchx84.Flatseal": "@adwPreset",
 				"class:simple-scan": "@adwPreset",
 				"class:re.sonny.Workbench": "@adwPreset",
+				"class:com.mattjakeman.ExtensionManager": "@adwPreset",
 				// Gtk
 				"class:org.gnome.Terminal": "@gtkPreset",
 				"class:org.gnome.seahorse.Application": "@gtkPreset",
@@ -133,6 +134,7 @@ export class ConfigManager {
 				"class:zulip": "@electronPreset",
 				"class:slack": "@electronPreset",
 				"class:code": "@electronPreset",
+				"class:antigravity": "@electronPreset",
 				"class:spotify": "@electronPreset",
 				"class:discord": "@electronPreset",
 				// Qt
