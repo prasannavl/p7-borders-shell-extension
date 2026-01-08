@@ -52,13 +52,9 @@ function createSpinRow({ title, subtitle, lower, upper, step = 1 }) {
 	return new Adw.SpinRow(params);
 }
 
-function clearGroupChildren(group) {
-	let child = group.get_first_child();
-	while (child) {
-		const next = child.get_next_sibling();
-		group.remove(child);
-		child = next;
-	}
+function clearGroupRows(group, rows) {
+	for (const row of rows) group.remove(row);
+	rows.length = 0;
 }
 
 function createPresetModel(presets) {
@@ -414,6 +410,8 @@ function buildConfigRow({
 	validateKey = () => true,
 	updateReferences = () => {},
 }) {
+	const updateReferencesSafe =
+		typeof updateReferences === "function" ? updateReferences : () => {};
 	const isPreset = key.startsWith("@");
 	let currentKey = key;
 	const expander = new Adw.ExpanderRow({ title: currentKey });
@@ -461,7 +459,7 @@ function buildConfigRow({
 			}
 			rawConfigs[nextKey] = rawConfigs[currentKey];
 			delete rawConfigs[currentKey];
-			updateReferences(currentKey, nextKey, rawConfigs);
+			updateReferencesSafe(currentKey, nextKey, rawConfigs);
 			currentKey = nextKey;
 			expander.title = currentKey;
 			keyRow.text = currentKey;
@@ -665,6 +663,7 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 		title: "App Configs",
 		description: "Unset values inherit from global defaults.",
 	});
+	const listRows = [];
 
 	function getPresetConfigForKey(presetKey) {
 		return getPresetConfig(rawConfigs, presetKey);
@@ -700,38 +699,37 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 	}
 
 	function refreshList() {
-		clearGroupChildren(listGroup);
+		clearGroupRows(listGroup, listRows);
 
 		const appKeys = Object.keys(rawConfigs)
 			.filter((key) => !key.startsWith("@"))
 			.sort((a, b) => a.localeCompare(b));
 
 		if (appKeys.length === 0) {
-			listGroup.add(
-				new Adw.ActionRow({
-					title: "No configs yet",
-					subtitle: "Add one above to get started.",
-				}),
-			);
+			const row = new Adw.ActionRow({
+				title: "No configs yet",
+				subtitle: "Add one above to get started.",
+			});
+			listGroup.add(row);
+			listRows.push(row);
 			return;
 		}
 
 		const presets = getPresetKeys(rawConfigs, false);
 		for (const key of appKeys) {
-			listGroup.add(
-				buildConfigRow({
-					key,
-					getRawConfigs,
-					saveConfigs,
-					refreshList,
-					presets,
-					allowPresetSelection: true,
-					allowRemove: true,
-					allowRename: true,
-					validateKey: isValidKey,
-					updateReferences: null,
-				}),
-			);
+			const row = buildConfigRow({
+				key,
+				getRawConfigs,
+				saveConfigs,
+				refreshList,
+				presets,
+				allowPresetSelection: true,
+				allowRemove: true,
+				allowRename: true,
+				validateKey: isValidKey,
+			});
+			listGroup.add(row);
+			listRows.push(row);
 		}
 
 		updateAddPresetModel();
@@ -860,6 +858,7 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 		title: "Presets",
 		description: "Preset definitions can be referenced by app configs.",
 	});
+	const listRows = [];
 
 	function updateAddButtonState() {
 		const key = addEntry.text.trim();
@@ -867,35 +866,35 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 	}
 
 	function refreshList() {
-		clearGroupChildren(listGroup);
+		clearGroupRows(listGroup, listRows);
 
 		const presetKeys = getPresetKeys(rawConfigs, true);
 
 		if (presetKeys.length === 0) {
-			listGroup.add(
-				new Adw.ActionRow({
-					title: "No presets yet",
-					subtitle: "Add one above to get started.",
-				}),
-			);
+			const row = new Adw.ActionRow({
+				title: "No presets yet",
+				subtitle: "Add one above to get started.",
+			});
+			listGroup.add(row);
+			listRows.push(row);
 			return;
 		}
 
 		for (const key of presetKeys) {
-			listGroup.add(
-				buildConfigRow({
-					key,
-					getRawConfigs,
-					saveConfigs,
-					refreshList,
-					presets: [],
-					allowPresetSelection: false,
-					allowRemove: key !== DEFAULT_PRESET_KEY,
-					allowRename: key !== DEFAULT_PRESET_KEY,
-					validateKey: isValidKey,
-					updateReferences,
-				}),
-			);
+			const row = buildConfigRow({
+				key,
+				getRawConfigs,
+				saveConfigs,
+				refreshList,
+				presets: [],
+				allowPresetSelection: false,
+				allowRemove: key !== DEFAULT_PRESET_KEY,
+				allowRename: key !== DEFAULT_PRESET_KEY,
+				validateKey: isValidKey,
+				updateReferences,
+			});
+			listGroup.add(row);
+			listRows.push(row);
 		}
 
 		updateAddButtonState();
