@@ -193,7 +193,7 @@ export class ConfigManager {
 			"class:foot": "@footPreset",
 			"class:footclient": "@footPreset",
 			"class:Alacritty": {
-				margins: { top: 36 },
+				margins: { top: 35 },
 				radius: { tl: 12, tr: 12 },
 				maximizedBorder: true,
 			},

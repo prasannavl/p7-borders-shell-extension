@@ -1,5 +1,6 @@
 import Adw from "gi://Adw";
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
@@ -22,6 +23,18 @@ function parseAppConfigs(settings) {
 
 function saveAppConfigs(settings, rawConfigs) {
 	settings.set_string(APP_CONFIGS_KEY, JSON.stringify(rawConfigs));
+}
+
+function createDebouncedSaver(settings, getConfigs, delayMs = 150) {
+	let timeoutId = 0;
+	return () => {
+		if (timeoutId) GLib.source_remove(timeoutId);
+		timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delayMs, () => {
+			timeoutId = 0;
+			saveAppConfigs(settings, getConfigs());
+			return GLib.SOURCE_REMOVE;
+		});
+	};
 }
 
 function isObject(value) {
@@ -62,6 +75,20 @@ function createPresetModel(presets) {
 	model.append(CUSTOM_LABEL);
 	for (const preset of presets) model.append(preset);
 	return model;
+}
+
+function getAppKeys(rawConfigs) {
+	return Object.keys(rawConfigs)
+		.filter((key) => !key.startsWith("@"))
+		.sort((a, b) => a.localeCompare(b));
+}
+
+function keysEqual(a, b) {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
 }
 
 function getPresetConfig(rawConfigs, presetKey) {
@@ -402,6 +429,7 @@ function buildConfigRow({
 	key,
 	getRawConfigs,
 	saveConfigs,
+	saveConfigsDebounced,
 	refreshList,
 	presets,
 	allowPresetSelection,
@@ -410,6 +438,7 @@ function buildConfigRow({
 	validateKey = () => true,
 	updateReferences = () => {},
 }) {
+	const saveConfigChange = saveConfigsDebounced || saveConfigs;
 	const updateReferencesSafe =
 		typeof updateReferences === "function" ? updateReferences : () => {};
 	const isPreset = key.startsWith("@");
@@ -511,7 +540,7 @@ function buildConfigRow({
 	function setConfigValue(updater) {
 		const config = ensureCustomConfig(false);
 		updater(config);
-		saveConfigs();
+		saveConfigChange();
 	}
 
 	function setConfigObject(config) {
@@ -611,6 +640,7 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 	let rawConfigs = initialConfigs;
 	const getRawConfigs = () => rawConfigs;
 	const saveConfigs = () => saveAppConfigs(settings, rawConfigs);
+	const saveConfigsDebounced = createDebouncedSaver(settings, getRawConfigs);
 	const isValidKey = (candidate) => candidate && !candidate.startsWith("@");
 
 	const addGroup = new Adw.PreferencesGroup({ title: "Add App Config" });
@@ -664,6 +694,8 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 		description: "Unset values inherit from global defaults.",
 	});
 	const listRows = [];
+	let lastAppKeys = [];
+	let lastPresetKeys = getPresetKeys(rawConfigs, false);
 
 	function getPresetConfigForKey(presetKey) {
 		return getPresetConfig(rawConfigs, presetKey);
@@ -701,9 +733,10 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 	function refreshList() {
 		clearGroupRows(listGroup, listRows);
 
-		const appKeys = Object.keys(rawConfigs)
-			.filter((key) => !key.startsWith("@"))
-			.sort((a, b) => a.localeCompare(b));
+		const appKeys = getAppKeys(rawConfigs);
+		const presets = getPresetKeys(rawConfigs, false);
+		lastAppKeys = appKeys;
+		lastPresetKeys = presets;
 
 		if (appKeys.length === 0) {
 			const row = new Adw.ActionRow({
@@ -715,12 +748,12 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 			return;
 		}
 
-		const presets = getPresetKeys(rawConfigs, false);
 		for (const key of appKeys) {
 			const row = buildConfigRow({
 				key,
 				getRawConfigs,
 				saveConfigs,
+				saveConfigsDebounced,
 				refreshList,
 				presets,
 				allowPresetSelection: true,
@@ -788,8 +821,16 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 
 	addEditor.applyConfig(addDraftConfig);
 	registerSettingsHandler((configs) => {
+		const nextAppKeys = getAppKeys(configs);
+		const nextPresetKeys = getPresetKeys(configs, false);
+		const appKeysChanged = !keysEqual(nextAppKeys, lastAppKeys);
+		const presetKeysChanged = !keysEqual(nextPresetKeys, lastPresetKeys);
 		rawConfigs = configs;
-		refreshList();
+		if (appKeysChanged || presetKeysChanged) {
+			refreshList();
+			return;
+		}
+		updateAddButtonState();
 	});
 
 	refreshList();
@@ -807,6 +848,7 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 	let rawConfigs = initialConfigs;
 	const getRawConfigs = () => rawConfigs;
 	const saveConfigs = () => saveAppConfigs(settings, rawConfigs);
+	const saveConfigsDebounced = createDebouncedSaver(settings, getRawConfigs);
 	const isValidKey = (candidate) => candidate?.startsWith("@");
 
 	function updateReferences(oldKey, newKey, configs) {
@@ -859,6 +901,7 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 		description: "Preset definitions can be referenced by app configs.",
 	});
 	const listRows = [];
+	let lastPresetKeys = getPresetKeys(rawConfigs, true);
 
 	function updateAddButtonState() {
 		const key = addEntry.text.trim();
@@ -869,6 +912,7 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 		clearGroupRows(listGroup, listRows);
 
 		const presetKeys = getPresetKeys(rawConfigs, true);
+		lastPresetKeys = presetKeys;
 
 		if (presetKeys.length === 0) {
 			const row = new Adw.ActionRow({
@@ -885,6 +929,7 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 				key,
 				getRawConfigs,
 				saveConfigs,
+				saveConfigsDebounced,
 				refreshList,
 				presets: [],
 				allowPresetSelection: false,
@@ -932,8 +977,10 @@ function buildPresetsPage(settings, initialConfigs, registerSettingsHandler) {
 	updateAddButtonState();
 
 	registerSettingsHandler((configs) => {
+		const nextPresetKeys = getPresetKeys(configs, true);
+		const presetKeysChanged = !keysEqual(nextPresetKeys, lastPresetKeys);
 		rawConfigs = configs;
-		refreshList();
+		if (presetKeysChanged) refreshList();
 	});
 
 	refreshList();

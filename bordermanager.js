@@ -31,26 +31,6 @@ export class BorderManager {
 
 	// --- Helpers ------------------------------------------------------------
 
-	_hideBorder(data) {
-		if (!data) return;
-		data.border.visible = false;
-		data.borderStyleCache = null;
-	}
-
-	_clearPendingTrack(metaWindow) {
-		const pending = this._pendingTrack.get(metaWindow);
-		if (!pending) return;
-		const { object, token } = pending;
-		if (object && !object.is_destroyed?.()) object.disconnectObject(token);
-		this._pendingTrack.delete(metaWindow);
-	}
-
-	_setPendingTrack(metaWindow, object, signal, handler) {
-		const token = {};
-		object.connectObject(signal, handler, token);
-		this._pendingTrack.set(metaWindow, { object, token });
-	}
-
 	_isInterestingWindow(metaWindow) {
 		const modalEnabled =
 			this.configManager?.globalConfig?.modalEnabled ?? false;
@@ -79,17 +59,32 @@ export class BorderManager {
 		}
 	}
 
-	_clearPendingSyncs() {
-		for (const [_win, syncId] of this._pendingSyncs.entries()) {
-			GLib.Source.remove(syncId);
-		}
-		this._pendingSyncs.clear();
+	_hideBorder(data) {
+		if (!data) return;
+		data.border.visible = false;
+		data.borderStyleCache = null;
+	}
+
+	_setPendingTrack(metaWindow, object, signal, handler) {
+		const token = {};
+		object.connectObject(signal, handler, token);
+		this._pendingTrack.set(metaWindow, { object, token });
+	}
+
+	_clearPendingTrack(metaWindow) {
+		const pending = this._pendingTrack.get(metaWindow);
+		if (!pending) return;
+		const { object, token } = pending;
+		if (object && !object.is_destroyed?.()) object.disconnectObject(token);
+		this._pendingTrack.delete(metaWindow);
 	}
 
 	_clearPendingTracks() {
 		for (const [win] of this._pendingTrack.entries()) {
-			this._clearPendingTrack(win);
+			const { object, token } = pending;
+			if (object && !object.is_destroyed?.()) object.disconnectObject(token);
 		}
+		this._pendingTrack.clear();
 	}
 
 	_clearPendingSync(metaWindow) {
@@ -97,6 +92,13 @@ export class BorderManager {
 		if (!pendingSyncId) return;
 		GLib.Source.remove(pendingSyncId);
 		this._pendingSyncs.delete(metaWindow);
+	}
+
+	_clearPendingSyncs() {
+		for (const [_win, syncId] of this._pendingSyncs.entries()) {
+			GLib.Source.remove(syncId);
+		}
+		this._pendingSyncs.clear();
 	}
 
 	_untrackAllWindows() {
