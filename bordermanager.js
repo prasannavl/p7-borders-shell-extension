@@ -54,7 +54,7 @@ export class BorderManager {
 	_isInterestingWindow(metaWindow) {
 		const modalEnabled =
 			this.configManager?.globalConfig?.modalEnabled ?? false;
-		
+
 		if (!modalEnabled) {
 			const transientFor = metaWindow.get_transient_for?.();
 			if (transientFor) return false;
@@ -127,8 +127,8 @@ export class BorderManager {
 		const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 			this._pendingSyncs.delete(metaWindow);
 
-			// DEFENSIVE checks to handle edge cases where 
-			// gnome shell loses it's actors without us being 
+			// DEFENSIVE checks to handle edge cases where
+			// gnome shell loses it's actors without us being
 			// notified correctly
 			if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
 				this._syncBorderToActor(metaWindow, data);
@@ -211,7 +211,7 @@ export class BorderManager {
 			});
 			return;
 		}
-		// We're ready now to actually do the work. 
+		// We're ready now to actually do the work.
 
 		const border = new St.Widget({
 			reactive: false,
@@ -289,8 +289,8 @@ export class BorderManager {
 		metaWindow.disconnectObject(this);
 		if (actor) actor.disconnectObject(this);
 
-		// DEFENSIVE checks to handle edge cases where 
-		// gnome shell loses it's actors without us being 
+		// DEFENSIVE checks to handle edge cases where
+		// gnome shell loses it's actors without us being
 		// notified correctly
 		if (
 			border &&
@@ -320,8 +320,8 @@ export class BorderManager {
 			? this._windowData.get(currentFocus)
 			: null;
 
-		// DEFENSIVE checks to handle edge cases where 
-		// gnome shell loses it's actors without us being 
+		// DEFENSIVE checks to handle edge cases where
+		// gnome shell loses it's actors without us being
 		// notified correctly
 		const lastValid =
 			lastData &&
@@ -334,7 +334,7 @@ export class BorderManager {
 				!currentData.border?.is_destroyed?.());
 
 		// If either focused window is invalid, it's either the
-		// first window or something went wrong with tracking, 
+		// first window or something went wrong with tracking,
 		// focus tacking, resync all
 		if (
 			(this._lastFocusedWindow && !lastValid) ||

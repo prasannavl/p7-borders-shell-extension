@@ -114,6 +114,7 @@ export class ConfigManager {
 					margins: { top: -10, right: -11, bottom: -11, left: -10 },
 					radius: 14,
 				},
+				"@footPreset": { margins: { top: 27 }, maximizedBorder: true },
 				// Adw
 				"regex.class:^org.gnome.*": "@adwPreset",
 				// "regex.class:^org.freedesktop.*": "@adwPreset",
@@ -128,12 +129,17 @@ export class ConfigManager {
 				"class:io.ente.auth": "@gtkPreset",
 				"class:dconf-editor": "@gtkPreset",
 				"class:org.gimp.GIMP": "@gtkPreset",
+				"class:gimp": "@gtkPreset",
 				"class:org.inkscape.Inkscape": "@gtkPreset",
 				"class:system-config-printer": "@gtkPreset",
 				"class:libreoffice-calc": "@gtkPreset",
 				"class:libreoffice-writer": "@gtkPreset",
 				"class:libreoffice-impress": "@gtkPreset",
 				"class:libreoffice-draw": "@gtkPreset",
+				"class:gnome-power-statistics": "@gtkPreset",
+				"class:cheese": "@gtkPreset",
+				"class:solaar": "@gtkPreset",
+				"class:org.pulseaudio.pavucontrol": "@gtkPreset",
 				// Chrome
 				"regex.class:^google-chrome*": "@chromePreset",
 				// Chrome apps
@@ -156,7 +162,8 @@ export class ConfigManager {
 				"class:dev.zed.Zed": "@zedPreset",
 				"class:mpv": "@zeroPreset",
 				// Custom
-				"class:foot": { margins: { top: 27 }, maximizedBorder: true },
+				"class:foot": "@footPreset",
+				"class:footclient": "@footPreset",
 				"class:Alacritty": {
 					margins: { top: 36 },
 					radius: { tl: 12, tr: 12 },
@@ -189,7 +196,7 @@ export class ConfigManager {
 		// Normalize all other configs using @default as base
 		for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
 			if (!key.startsWith("@")) {
-				this.appConfigs[key] = this.normalizeConfig(
+				const normalized = this.normalizeConfig(
 					{
 						...defaultConfig,
 						...{ enabled: true },
@@ -197,6 +204,8 @@ export class ConfigManager {
 					},
 					globalConfig,
 				);
+				const configKey = key.startsWith("regex.") ? key : key.toLowerCase();
+				this.appConfigs[configKey] = normalized;
 			}
 		}
 	}
@@ -240,7 +249,6 @@ export class ConfigManager {
 
 			this._logger.log("Default configuration values saved to dconf");
 		}
-
 	}
 
 	_getAccentColor() {
@@ -372,7 +380,8 @@ export class ConfigManager {
 
 		// Try exact matches first
 		const exactMatch =
-			this.appConfigs[`app:${appId}`] || this.appConfigs[`class:${wmClass}`];
+			this.appConfigs[`app:${appId.toLowerCase()}`] ||
+			this.appConfigs[`class:${wmClass.toLowerCase()}`];
 
 		if (exactMatch) return exactMatch;
 
