@@ -14,6 +14,12 @@
       <summary>Default maximized borders setting</summary>
       <description>Default setting for whether borders should be shown on maximized windows</description>
     </key>
+
+    <key name="hide-non-top-level" type="b">
+      <default>true</default>
+      <summary>Hide borders on non-top-level windows</summary>
+      <description>Skip borders for transient or attached dialog windows</description>
+    </key>
     
     <!-- Default fallback configuration -->
     <key name="default-margins" type="i">

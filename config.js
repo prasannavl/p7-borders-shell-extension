@@ -43,7 +43,11 @@ export class ConfigManager {
 	_init() {
 		// Load boolean settings
 		this.radiusEnabled = this._settings.get_boolean("radius-enabled");
-		const globalConfig = { radiusEnabled: this.radiusEnabled };
+		this.hideNonTopLevel = this._settings.get_boolean("hide-non-top-level");
+		const globalConfig = {
+			radiusEnabled: this.radiusEnabled,
+			hideNonTopLevel: this.hideNonTopLevel,
+		};
 		this.globalConfig = globalConfig;
 
 		// Update fallback config from all current settings
@@ -211,6 +215,7 @@ export class ConfigManager {
 				"radius-enabled",
 				"default-maximized-borders",
 				"default-enabled",
+				"hide-non-top-level",
 			];
 			for (const key of boolKeys) {
 				this._settings.set_boolean(key, this._settings.get_boolean(key));

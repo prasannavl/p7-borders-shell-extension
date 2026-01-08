@@ -16,13 +16,10 @@ export class BorderManager {
 		 *   borderStyleCache: string | null,
 		 * }>} */
 		this._windowData = new Map();
-
 		/** @type {Map<Meta.Window, {object: any, token: object}>} */
 		this._pendingTrack = new Map();
-
 		/** @type {Map<Meta.Window, number>} */
 		this._pendingSyncs = new Map();
-
 		/** @type {Meta.Window | null} */
 		this._lastFocusedWindow = null;
 
@@ -55,14 +52,20 @@ export class BorderManager {
 	}
 
 	_isInterestingWindow(metaWindow) {
+		const hideNonTopLevel =
+			this.configManager?.globalConfig?.hideNonTopLevel ?? true;
+		
+		if (hideNonTopLevel) {
+			const transientFor = metaWindow.get_transient_for?.();
+			if (transientFor) return false;
+			if (metaWindow.is_attached_dialog?.()) return false;
+		}
+
 		const type = metaWindow.get_window_type();
+
 		const WindowType = Meta.WindowType;
-		return (
-			!WindowType ||
-			type === WindowType.NORMAL ||
-			type === WindowType.DIALOG ||
-			type === WindowType.MODAL_DIALOG
-		);
+		if (type === WindowType.MODAL_DIALOG) return !hideNonTopLevel;
+		return type === WindowType.NORMAL || type === WindowType.DIALOG;
 	}
 
 	_resyncAll() {
@@ -76,20 +79,57 @@ export class BorderManager {
 		}
 	}
 
+	_clearPendingSyncs() {
+		for (const [_win, syncId] of this._pendingSyncs.entries()) {
+			GLib.Source.remove(syncId);
+		}
+		this._pendingSyncs.clear();
+	}
+
+	_clearPendingTracks() {
+		for (const [win] of this._pendingTrack.entries()) {
+			this._clearPendingTrack(win);
+		}
+	}
+
+	_clearPendingSync(metaWindow) {
+		const pendingSyncId = this._pendingSyncs.get(metaWindow);
+		if (!pendingSyncId) return;
+		GLib.Source.remove(pendingSyncId);
+		this._pendingSyncs.delete(metaWindow);
+	}
+
+	_untrackAllWindows() {
+		const tracked = Array.from(this._windowData.keys());
+		for (const win of tracked) this._untrackWindow(win);
+	}
+
+	_trackAllWindows() {
+		for (const win of global.display.list_all_windows())
+			this._tryTrackWindow(win);
+	}
+
+	_retrackAllWindows() {
+		this._clearPendingSyncs();
+		this._clearPendingTracks();
+		this._untrackAllWindows();
+		this._trackAllWindows();
+	}
+
 	_queueUpdate(metaWindow, data) {
 		if (!data) return;
 		const { border, actor } = data;
 
 		// Coalesce rapid updates: only the last scheduled sync runs
-		const existing = this._pendingSyncs.get(metaWindow);
-		if (existing) {
-			GLib.Source.remove(existing);
-			this._pendingSyncs.delete(metaWindow);
-		}
+		this._clearPendingSync(metaWindow);
 
 		// Schedule sync on next idle cycle for smooth updates
 		const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 			this._pendingSyncs.delete(metaWindow);
+
+			// DEFENSIVE checks to handle edge cases where 
+			// gnome shell loses it's actors without us being 
+			// notified correctly
 			if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
 				this._syncBorderToActor(metaWindow, data);
 			}
@@ -124,28 +164,27 @@ export class BorderManager {
 
 		// Clear style cache to force reapplication of colors/settings
 		data.borderStyleCache = null;
-
 		this._queueUpdate(metaWindow, data);
 
 		const windowTitle = metaWindow.get_title() || "untitled";
 		this._logger.log(
-			`Updated config: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
+			`config updated: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}`,
 		);
 	}
 
-	_trackWindow(metaWindow) {
+	_tryTrackWindow(metaWindow) {
 		if (!this._isInterestingWindow(metaWindow)) return;
-
 		if (this._windowData.has(metaWindow)) return;
 
+		// DEFENSIVE checks to first schedule since the actor
+		// will not immediately be ready on window creation
 		const actor = metaWindow.get_compositor_private();
 		if (!actor) {
 			// Actor not ready yet - listen for when window is shown (actor will be ready by then)
 			if (this._pendingTrack.has(metaWindow)) return;
-
 			this._setPendingTrack(metaWindow, metaWindow, "shown", () => {
 				this._clearPendingTrack(metaWindow);
-				this._trackWindow(metaWindow);
+				this._tryTrackWindow(metaWindow);
 			});
 			return;
 		}
@@ -155,6 +194,8 @@ export class BorderManager {
 		const allocWidth = allocation ? allocation.get_width() : 0;
 		const allocHeight = allocation ? allocation.get_height() : 0;
 
+		// DEFENSIVE checks to schedule when actor exists
+		// but has zero allocation initially
 		if (!allocation || allocWidth <= 0 || allocHeight <= 0) {
 			// Actor exists but not allocated yet - wait for allocation
 			if (this._pendingTrack.has(metaWindow)) return;
@@ -165,11 +206,12 @@ export class BorderManager {
 				const h = alloc ? alloc.get_height() : 0;
 				if (alloc && w > 0 && h > 0) {
 					this._clearPendingTrack(metaWindow);
-					this._trackWindow(metaWindow);
+					this._tryTrackWindow(metaWindow);
 				}
 			});
 			return;
 		}
+		// We're ready now to actually do the work. 
 
 		const border = new St.Widget({
 			reactive: false,
@@ -228,7 +270,7 @@ export class BorderManager {
 		this._windowData.set(metaWindow, windowData);
 
 		this._logger.log(
-			`Tracking window: ${windowTitle} (${metaWindow.get_wm_class() || "unknown class"}) - Margins: ${JSON.stringify(config.margins)}, Radius: ${JSON.stringify(config.radius)}`,
+			`track: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}, pending: ${this._pendingTrack.size}`,
 		);
 
 		// Initial sync
@@ -238,23 +280,18 @@ export class BorderManager {
 	_untrackWindow(metaWindow) {
 		// Cancel pending signal tracking
 		this._clearPendingTrack(metaWindow);
-
-		const data = this._windowData.get(metaWindow);
-
 		// Cancel any pending sync for this window
-		const pendingSyncId = this._pendingSyncs.get(metaWindow);
-		if (pendingSyncId) {
-			GLib.Source.remove(pendingSyncId);
-			this._pendingSyncs.delete(metaWindow);
-		}
-
+		this._clearPendingSync(metaWindow);
+		const data = this._windowData.get(metaWindow);
 		if (!data) return;
 
 		const { border, actor } = data;
 		metaWindow.disconnectObject(this);
 		if (actor) actor.disconnectObject(this);
 
-		// Remove border from actor with disposal guards
+		// DEFENSIVE checks to handle edge cases where 
+		// gnome shell loses it's actors without us being 
+		// notified correctly
 		if (
 			border &&
 			!border.is_destroyed?.() &&
@@ -269,8 +306,8 @@ export class BorderManager {
 	}
 
 	_onConfigChanged(changeType) {
-		this._logger.log(`Config changed: ${changeType}`);
-		// For any config change, resync all windows
+		this._logger.log(`conf changed: ${changeType}`);
+		this._retrackAllWindows();
 		this._resyncAll();
 	}
 
@@ -283,6 +320,9 @@ export class BorderManager {
 			? this._windowData.get(currentFocus)
 			: null;
 
+		// DEFENSIVE checks to handle edge cases where 
+		// gnome shell loses it's actors without us being 
+		// notified correctly
 		const lastValid =
 			lastData &&
 			!lastData.actor?.is_destroyed?.() &&
@@ -293,6 +333,9 @@ export class BorderManager {
 				!currentData.actor?.is_destroyed?.() &&
 				!currentData.border?.is_destroyed?.());
 
+		// If either focused window is invalid, it's either the
+		// first window or something went wrong with tracking, 
+		// focus tacking, resync all
 		if (
 			(this._lastFocusedWindow && !lastValid) ||
 			(currentFocus && !currentValid)
@@ -304,7 +347,6 @@ export class BorderManager {
 
 		// Sync the previously focused window (if any)
 		this._queueUpdate(this._lastFocusedWindow, lastData);
-
 		// Sync the newly focused window (if any)
 		this._queueUpdate(currentFocus, currentData);
 
@@ -313,7 +355,7 @@ export class BorderManager {
 	}
 
 	_onWindowCreated(metaWindow) {
-		this._trackWindow(metaWindow);
+		this._tryTrackWindow(metaWindow);
 	}
 
 	// --- Extension lifecycle -------------------------------------------------
@@ -337,9 +379,7 @@ export class BorderManager {
 		);
 
 		// Attach to existing windows
-		for (const win of global.display.list_all_windows()) {
-			this._trackWindow(win);
-		}
+		this._trackAllWindows();
 	}
 
 	disable() {
@@ -354,18 +394,9 @@ export class BorderManager {
 		global.display.disconnectObject(this);
 		Main.layoutManager.disconnectObject(this);
 
-		// Cancel all pending syncs
-		for (const [_win, syncId] of this._pendingSyncs.entries()) {
-			GLib.Source.remove(syncId);
-		}
-		this._pendingSyncs.clear();
-
-		// Cancel pending signal tracking
-		for (const [win] of this._pendingTrack.entries()) {
-			this._clearPendingTrack(win);
-		}
-
-		for (const [win] of this._windowData.entries()) this._untrackWindow(win);
+		this._clearPendingSyncs();
+		this._clearPendingTracks();
+		this._untrackAllWindows();
 	}
 }
 
