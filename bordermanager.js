@@ -262,11 +262,7 @@ export class BorderManager {
 
 		this._invalidateAndUpdate(metaWindow, data);
 
-		this._logWindow(
-			metaWindow,
-			"config updated",
-			config,
-		);
+		this._logWindow(metaWindow, "config updated", config);
 	}
 
 	_tryTrackWindow(metaWindow) {
@@ -351,11 +347,7 @@ export class BorderManager {
 		const data = this._windowData.get(metaWindow);
 		if (!data) return;
 
-		this._logWindow(
-			metaWindow,
-			"untrack",
-			data.config,
-		);
+		this._logWindow(metaWindow, "untrack", data.config);
 
 		const { border, actor } = data;
 		metaWindow.disconnectObject(this);
