@@ -29,7 +29,7 @@
         rec {
           p7-borders = pkgs.stdenvNoCC.mkDerivation {
             pname = "gnome-shell-extension-p7-borders";
-            passthru.extensionUuid = uuid;
+            extensionUuid = uuid;
 
             version = builtins.toString metadata.version;
             src = ./.;
