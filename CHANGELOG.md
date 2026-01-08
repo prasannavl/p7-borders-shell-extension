@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [23] - 2025-01-08
+
+- More robust tracking and cleanup handling.
+
 ## [22] - 2025-01-08
 
 - Option: `verbose-logging`: Toggle to enable track/untrack debug logs.
