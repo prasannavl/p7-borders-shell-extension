@@ -309,10 +309,15 @@ function buildGlobalPage(settings) {
 	const modalEnabledRow = new Adw.SwitchRow({
 		title: "Enable borders on modal/dialog windows",
 	});
+	const verboseLoggingRow = new Adw.SwitchRow({
+		title: "Enable verbose logging",
+		subtitle: "Log detailed track/untrack events for debugging",
+	});
 	behaviorGroup.add(radiusEnabledRow);
 	behaviorGroup.add(defaultEnabledRow);
 	behaviorGroup.add(maximizedBordersRow);
 	behaviorGroup.add(modalEnabledRow);
+	behaviorGroup.add(verboseLoggingRow);
 
 	settings.bind(
 		"radius-enabled",
@@ -335,6 +340,12 @@ function buildGlobalPage(settings) {
 	settings.bind(
 		"modal-enabled",
 		modalEnabledRow,
+		"active",
+		Gio.SettingsBindFlags.DEFAULT,
+	);
+	settings.bind(
+		"verbose-logging",
+		verboseLoggingRow,
 		"active",
 		Gio.SettingsBindFlags.DEFAULT,
 	);

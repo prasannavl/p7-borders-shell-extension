@@ -20,6 +20,12 @@
       <summary>Enable borders on modal/dialog windows</summary>
       <description>Allow borders for transient or attached dialog windows</description>
     </key>
+
+    <key name="verbose-logging" type="b">
+      <default>false</default>
+      <summary>Enable verbose logging</summary>
+      <description>Log detailed tracking events for debugging</description>
+    </key>
     
     <!-- Default fallback configuration -->
     <key name="default-margins" type="i">

@@ -144,6 +144,10 @@ export class BorderManager {
 		);
 	}
 
+	_isVerboseLogging() {
+		return !!this.configManager?.globalConfig?.verboseLogging;
+	}
+
 	// --- Core geometry + style sync -----------------------------------------
 
 	_syncBorderToActor(metaWindow, data) {
@@ -266,7 +270,6 @@ export class BorderManager {
 			this,
 		);
 
-		const windowTitle = metaWindow.get_title() || "untitled";
 		const windowData = {
 			border,
 			actor,
@@ -275,9 +278,12 @@ export class BorderManager {
 		};
 		this._windowData.set(metaWindow, windowData);
 
-		this._logger.log(
-			`track: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}, pending: ${this._pendingTrack.size}`,
-		);
+		if (this._isVerboseLogging()) {
+			const windowTitle = metaWindow.get_title() || "untitled";
+			this._logger.log(
+				`track: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}, pending: ${this._pendingTrack.size}`,
+			);
+		}
 
 		// Initial sync
 		this._queueUpdate(metaWindow, windowData);
@@ -290,6 +296,13 @@ export class BorderManager {
 		this._clearPendingSync(metaWindow);
 		const data = this._windowData.get(metaWindow);
 		if (!data) return;
+
+		if (this._isVerboseLogging()) {
+			const windowTitle = metaWindow.get_title() || "untitled";
+			this._logger.log(
+				`untrack: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(data.config.margins)}, r: ${JSON.stringify(data.config.radius)}`,
+			);
+		}
 
 		const { border, actor } = data;
 		metaWindow.disconnectObject(this);

@@ -40,9 +40,11 @@ export class ConfigManager {
 		// Load boolean settings
 		this.radiusEnabled = this._settings.get_boolean("radius-enabled");
 		this.modalEnabled = this._settings.get_boolean("modal-enabled");
+		this.verboseLogging = this._settings.get_boolean("verbose-logging");
 		const globalConfig = {
 			radiusEnabled: this.radiusEnabled,
 			modalEnabled: this.modalEnabled,
+			verboseLogging: this.verboseLogging,
 		};
 		this.globalConfig = globalConfig;
 
@@ -203,7 +205,7 @@ export class ConfigManager {
 	_ensureDefaultsSaved() {
 		// Check if this is the first run by looking at config-version
 		const configVersion = this._settings.get_int("config-version");
-		const currentRevision = 3;
+		const currentRevision = 4;
 
 		if (configVersion < currentRevision) {
 			// First run - save all default values to make them visible in dconf-editor
@@ -216,6 +218,7 @@ export class ConfigManager {
 				"default-maximized-borders",
 				"default-enabled",
 				"modal-enabled",
+				"verbose-logging",
 			];
 			for (const key of boolKeys) {
 				this._settings.set_boolean(key, this._settings.get_boolean(key));
