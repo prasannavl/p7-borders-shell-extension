@@ -283,13 +283,13 @@ function buildGlobalPage(settings) {
 	const maximizedBordersRow = new Adw.SwitchRow({
 		title: "Show borders on maximized windows",
 	});
-	const hideNonTopLevelRow = new Adw.SwitchRow({
-		title: "Hide borders on modal/dialog windows",
+	const modalEnabledRow = new Adw.SwitchRow({
+		title: "Enable borders on modal/dialog windows",
 	});
 	behaviorGroup.add(radiusEnabledRow);
 	behaviorGroup.add(defaultEnabledRow);
 	behaviorGroup.add(maximizedBordersRow);
-	behaviorGroup.add(hideNonTopLevelRow);
+	behaviorGroup.add(modalEnabledRow);
 
 	settings.bind(
 		"radius-enabled",
@@ -310,8 +310,8 @@ function buildGlobalPage(settings) {
 		Gio.SettingsBindFlags.DEFAULT,
 	);
 	settings.bind(
-		"hide-non-top-level",
-		hideNonTopLevelRow,
+		"modal-enabled",
+		modalEnabledRow,
 		"active",
 		Gio.SettingsBindFlags.DEFAULT,
 	);

@@ -43,10 +43,10 @@ export class ConfigManager {
 	_init() {
 		// Load boolean settings
 		this.radiusEnabled = this._settings.get_boolean("radius-enabled");
-		this.hideNonTopLevel = this._settings.get_boolean("hide-non-top-level");
+		this.modalEnabled = this._settings.get_boolean("modal-enabled");
 		const globalConfig = {
 			radiusEnabled: this.radiusEnabled,
-			hideNonTopLevel: this.hideNonTopLevel,
+			modalEnabled: this.modalEnabled,
 		};
 		this.globalConfig = globalConfig;
 
@@ -215,7 +215,7 @@ export class ConfigManager {
 				"radius-enabled",
 				"default-maximized-borders",
 				"default-enabled",
-				"hide-non-top-level",
+				"modal-enabled",
 			];
 			for (const key of boolKeys) {
 				this._settings.set_boolean(key, this._settings.get_boolean(key));
@@ -240,6 +240,7 @@ export class ConfigManager {
 
 			this._logger.log("Default configuration values saved to dconf");
 		}
+
 	}
 
 	_getAccentColor() {

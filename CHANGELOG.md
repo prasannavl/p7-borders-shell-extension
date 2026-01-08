@@ -2,6 +2,20 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [19] - 2025-01-08
+
+### Added
+
+- Make all class and app matching case in-sensitive by default.
+  - For case specific matching, the regex prefixes can be used.
+
+- Option: `modal-enabled` (default: `false`)
+  - By default we now only apply to top level windows only skipping models.
+    This is default since can't know what toolkits or margins the modals will
+    use that can defer from the top level window. The option is there to
+    enable older behavior if needed.
+
+
 ## [1] - 2025-12-27
 
 ### Added

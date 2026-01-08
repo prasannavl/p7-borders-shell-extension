@@ -15,10 +15,10 @@
       <description>Default setting for whether borders should be shown on maximized windows</description>
     </key>
 
-    <key name="hide-non-top-level" type="b">
-      <default>true</default>
-      <summary>Hide borders on non-top-level windows</summary>
-      <description>Skip borders for transient or attached dialog windows</description>
+    <key name="modal-enabled" type="b">
+      <default>false</default>
+      <summary>Enable borders on modal/dialog windows</summary>
+      <description>Allow borders for transient or attached dialog windows</description>
     </key>
     
     <!-- Default fallback configuration -->

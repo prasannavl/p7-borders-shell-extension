@@ -52,10 +52,10 @@ export class BorderManager {
 	}
 
 	_isInterestingWindow(metaWindow) {
-		const hideNonTopLevel =
-			this.configManager?.globalConfig?.hideNonTopLevel ?? true;
+		const modalEnabled =
+			this.configManager?.globalConfig?.modalEnabled ?? false;
 		
-		if (hideNonTopLevel) {
+		if (!modalEnabled) {
 			const transientFor = metaWindow.get_transient_for?.();
 			if (transientFor) return false;
 			if (metaWindow.is_attached_dialog?.()) return false;
@@ -64,7 +64,7 @@ export class BorderManager {
 		const type = metaWindow.get_window_type();
 
 		const WindowType = Meta.WindowType;
-		if (type === WindowType.MODAL_DIALOG) return !hideNonTopLevel;
+		if (type === WindowType.MODAL_DIALOG) return modalEnabled;
 		return type === WindowType.NORMAL || type === WindowType.DIALOG;
 	}
 

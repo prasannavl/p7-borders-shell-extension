@@ -65,6 +65,7 @@ Global defaults apply when no app-specific override exists:
 - `default-inactive-color` (string)
 - `default-maximized-borders` (bool)
 - `radius-enabled` (bool)
+- `modal-enabled` (bool)
 
 ### App configs (JSON)
 
