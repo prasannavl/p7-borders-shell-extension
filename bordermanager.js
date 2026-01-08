@@ -113,9 +113,7 @@ export class BorderManager {
 			// Get fresh config to ensure we have latest colors/settings
 			const config = this.configManager.getConfigForWindow(win);
 			data.config = config;
-			// Clear style cache to force reapplication of colors
-			data.borderStyleCache = null;
-			this._queueUpdate(win, data);
+			this._invalidateAndUpdate(win, data);
 		}
 	}
 
@@ -123,6 +121,25 @@ export class BorderManager {
 		if (!data) return;
 		data.border.visible = false;
 		data.borderStyleCache = null;
+	}
+
+	_invalidateAndUpdate(metaWindow, data) {
+		if (!data) return;
+		data.borderStyleCache = null;
+		this._queueUpdate(metaWindow, data);
+	}
+
+	_logWindow(metaWindow, prefix, config, extra) {
+		if (!this._isVerboseLogging()) return;
+		const title = metaWindow.get_title() || "untitled";
+		const wmClass = metaWindow.get_wm_class() || "unknown";
+		const configTail = config
+			? ` m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}`
+			: "";
+		const extraTail = extra ? ` ${extra}` : "";
+		this._logger.log(
+			`${prefix}: ${title} (class: ${wmClass})${configTail}${extraTail}`,
+		);
 	}
 
 	_untrackAllWindows() {
@@ -142,7 +159,7 @@ export class BorderManager {
 	}
 
 	_queueUpdate(metaWindow, data) {
-		if (!data) return;
+		if (!data || !this._isLiveWindowData(data)) return;
 
 		// Schedule sync on next idle cycle for smooth updates
 		this._pending.scheduleSync(metaWindow, () => {
@@ -165,9 +182,14 @@ export class BorderManager {
 	}
 
 	_waitForActorReady(metaWindow, actor) {
-		if (!actor) {
+		const setPending = (entries) => {
 			if (this._pending.hasTrack(metaWindow)) return true;
-			this._pending.track(metaWindow, [
+			this._pending.track(metaWindow, entries);
+			return true;
+		};
+
+		if (!actor) {
+			return setPending([
 				{
 					object: metaWindow,
 					signal: "shown",
@@ -182,7 +204,6 @@ export class BorderManager {
 					handler: () => this._pending.clearTrack(metaWindow),
 				},
 			]);
-			return true;
 		}
 
 		const allocation = actor.get_allocation_box();
@@ -190,8 +211,7 @@ export class BorderManager {
 		const allocHeight = allocation ? allocation.get_height() : 0;
 
 		if (!allocation || allocWidth <= 0 || allocHeight <= 0) {
-			if (this._pending.hasTrack(metaWindow)) return true;
-			this._pending.track(metaWindow, [
+			return setPending([
 				{
 					object: actor,
 					signal: "notify::allocation",
@@ -211,7 +231,6 @@ export class BorderManager {
 					handler: () => this._pending.clearTrack(metaWindow),
 				},
 			]);
-			return true;
 		}
 
 		return false;
@@ -241,13 +260,12 @@ export class BorderManager {
 
 		data.config = config;
 
-		// Clear style cache to force reapplication of colors/settings
-		data.borderStyleCache = null;
-		this._queueUpdate(metaWindow, data);
+		this._invalidateAndUpdate(metaWindow, data);
 
-		const windowTitle = metaWindow.get_title() || "untitled";
-		this._logger.log(
-			`config updated: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}`,
+		this._logWindow(
+			metaWindow,
+			"config updated",
+			config,
 		);
 	}
 
@@ -316,12 +334,12 @@ export class BorderManager {
 		};
 		this._windowData.set(metaWindow, windowData);
 
-		if (this._isVerboseLogging()) {
-			const windowTitle = metaWindow.get_title() || "untitled";
-			this._logger.log(
-				`track: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}, pending: ${this._pending.trackCount()}`,
-			);
-		}
+		this._logWindow(
+			metaWindow,
+			"track",
+			config,
+			`pending: ${this._pending.trackCount()}`,
+		);
 
 		// Initial sync
 		this._queueUpdate(metaWindow, windowData);
@@ -333,12 +351,11 @@ export class BorderManager {
 		const data = this._windowData.get(metaWindow);
 		if (!data) return;
 
-		if (this._isVerboseLogging()) {
-			const windowTitle = metaWindow.get_title() || "untitled";
-			this._logger.log(
-				`untrack: ${windowTitle} (class: ${metaWindow.get_wm_class() || "unknown"}) m: ${JSON.stringify(data.config.margins)}, r: ${JSON.stringify(data.config.radius)}`,
-			);
-		}
+		this._logWindow(
+			metaWindow,
+			"untrack",
+			data.config,
+		);
 
 		const { border, actor } = data;
 		metaWindow.disconnectObject(this);
