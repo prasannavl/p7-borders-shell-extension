@@ -5,7 +5,7 @@ JS_FILES := $(wildcard *.js)
 EXTRA_SOURCES := $(filter-out extension.js prefs.js,$(JS_FILES)) README.md
 EXTRA_SOURCE_ARGS := $(foreach f,$(EXTRA_SOURCES),--extra-source=$(f))
 
-.PHONY: lint schemas version pack install enable disable reload clean
+.PHONY: lint schemas version pack install ginstall enable disable reload clean
 
 lint:
 	biome lint $(JS_FILES)
@@ -23,11 +23,17 @@ version:
 	sed -E "s/\"version\": [0-9]+/\"version\": $$new/" metadata.json > $$tmp && mv $$tmp metadata.json; \
 	echo "version $$new"
 
-pack: schemas fmt
+pack: schemas
 	mkdir -p $(DIST_DIR)
 	gnome-extensions pack --force --out-dir $(DIST_DIR) $(EXTRA_SOURCE_ARGS)
 
 install: pack
+	dest=$(DESTDIR)/share/gnome-shell/extensions/$(UUID); \
+	mkdir -p "$$dest"; \
+	unzip -q -o $(DIST_DIR)/$(UUID).shell-extension.zip -d "$$dest"; \
+	cp -r schemas "$$dest"/
+
+ginstall: pack
 	gnome-extensions install --force $(DIST_DIR)/$(UUID).shell-extension.zip
 
 enable:
