@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [20] - 2025-01-08
+
+- Bugfix: Preferences: Debounced config changes, more reslient UI.
+
 ## [19] - 2025-01-08
 
 ### Added
