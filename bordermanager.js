@@ -80,7 +80,7 @@ export class BorderManager {
 	}
 
 	_clearPendingTracks() {
-		for (const [win] of this._pendingTrack.entries()) {
+		for (const [_win, pending] of this._pendingTrack.entries()) {
 			const { object, token } = pending;
 			if (object && !object.is_destroyed?.()) object.disconnectObject(token);
 		}
@@ -120,7 +120,6 @@ export class BorderManager {
 
 	_queueUpdate(metaWindow, data) {
 		if (!data) return;
-		const { border, actor } = data;
 
 		// Coalesce rapid updates: only the last scheduled sync runs
 		this._clearPendingSync(metaWindow);
@@ -129,15 +128,20 @@ export class BorderManager {
 		const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 			this._pendingSyncs.delete(metaWindow);
 
-			// DEFENSIVE checks to handle edge cases where
-			// gnome shell loses it's actors without us being
-			// notified correctly
-			if (!actor?.is_destroyed?.() && !border?.is_destroyed?.()) {
+			if (this._isLiveWindowData(data)) {
 				this._syncBorderToActor(metaWindow, data);
 			}
 			return GLib.SOURCE_REMOVE;
 		});
 		this._pendingSyncs.set(metaWindow, idleId);
+	}
+
+	_isLiveWindowData(data) {
+		return !!(
+			data &&
+			!data.actor?.is_destroyed?.() &&
+			!data.border?.is_destroyed?.()
+		);
 	}
 
 	// --- Core geometry + style sync -----------------------------------------
@@ -291,16 +295,7 @@ export class BorderManager {
 		metaWindow.disconnectObject(this);
 		if (actor) actor.disconnectObject(this);
 
-		// DEFENSIVE checks to handle edge cases where
-		// gnome shell loses it's actors without us being
-		// notified correctly
-		if (
-			border &&
-			!border.is_destroyed?.() &&
-			actor &&
-			!actor.is_destroyed?.() &&
-			border.get_parent?.() === actor
-		) {
+		if (this._isLiveWindowData(data) && border.get_parent?.() === actor) {
 			actor.remove_child(border);
 		}
 
@@ -310,7 +305,6 @@ export class BorderManager {
 	_onConfigChanged(changeType) {
 		this._logger.log(`conf changed: ${changeType}`);
 		this._retrackAllWindows();
-		this._resyncAll();
 	}
 
 	_onFocusChanged() {
@@ -322,18 +316,9 @@ export class BorderManager {
 			? this._windowData.get(currentFocus)
 			: null;
 
-		// DEFENSIVE checks to handle edge cases where
-		// gnome shell loses it's actors without us being
-		// notified correctly
-		const lastValid =
-			lastData &&
-			!lastData.actor?.is_destroyed?.() &&
-			!lastData.border?.is_destroyed?.();
+		const lastValid = lastData && this._isLiveWindowData(lastData);
 		const currentValid =
-			!currentFocus ||
-			(currentData &&
-				!currentData.actor?.is_destroyed?.() &&
-				!currentData.border?.is_destroyed?.());
+			!currentFocus || (currentData && this._isLiveWindowData(currentData));
 
 		// If either focused window is invalid, it's either the
 		// first window or something went wrong with tracking,

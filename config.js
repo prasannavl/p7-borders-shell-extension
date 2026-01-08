@@ -18,18 +18,14 @@ export class ConfigManager {
 		// Connect to settings changes
 		this._settings.connectObject(
 			"changed",
-			(_settings, key) => {
-				this._onSettingChanged(key);
-			},
+			() => this._reloadConfig("settings-changed"),
 			this,
 		);
 
 		// Connect to accent color changes
 		this._interfaceSettings.connectObject(
 			"changed::accent-color",
-			() => {
-				this._onAccentColorChanged();
-			},
+			() => this._reloadConfig("accent-color"),
 			this,
 		);
 
@@ -66,6 +62,7 @@ export class ConfigManager {
 
 		// Load app configs from gsettings
 		const savedConfigs = this._settings.get_string("app-configs");
+		this._savedAppConfigs = {};
 		if (savedConfigs && savedConfigs !== "{}") {
 			try {
 				this._savedAppConfigs = JSON.parse(savedConfigs);
@@ -73,6 +70,9 @@ export class ConfigManager {
 				this._logger.warn("Failed to parse saved app configs:", error);
 				this._savedAppConfigs = this._fallbackAppConfig();
 			}
+		}
+		if (!this._savedAppConfigs || typeof this._savedAppConfigs !== "object") {
+			this._savedAppConfigs = {};
 		}
 
 		// Build normalized app configs
@@ -279,14 +279,9 @@ export class ConfigManager {
 
 	// --- GSettings change handling -----------------------------------------
 
-	_onSettingChanged() {
+	_reloadConfig(changeType) {
 		this._init();
-		this._notifyConfigChange("settings-changed");
-	}
-
-	_onAccentColorChanged() {
-		this._init();
-		this._notifyConfigChange("accent-color");
+		this._notifyConfigChange(changeType);
 	}
 
 	_notifyConfigChange(changeType) {
@@ -332,7 +327,7 @@ export class ConfigManager {
 		this._configChangeCallbacks.clear();
 	}
 
-	_resolvePresets(rawConfigs) {
+	_resolvePresets(rawConfigs = {}) {
 		// First, extract all presets (keys starting with @)
 		const presets = {};
 		const appConfigs = {};

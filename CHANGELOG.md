@@ -2,6 +2,11 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [21] - 2025-01-08
+
+- Regression fix: Fixes the tracker cleanup logic bug that was introduced in
+  v20 and some more code clean-up.
+
 ## [20] - 2025-01-08
 
 - Bugfix: Preferences: Debounced config changes, more reslient UI.
