@@ -131,8 +131,8 @@ export class ConfigManager {
 				radius: { tl: 12, tr: 12, br: 0, bl: 0 },
 			},
 			"@chromeGtkPreset": {
-				margins: { top: -8, right: -11, bottom: -13, left: -11 },
-				radius: { tl: 14, tr: 14, br: 0, bl: 0 },
+				margins: { top: -10, right: -11, bottom: -14, left: -11 },
+				radius: { tl: 10, tr: 10, br: 0, bl: 0 },
 			},
 			"@zedPreset": {
 				margins: { top: -10, right: -11, bottom: -11, left: -10 },
@@ -146,9 +146,11 @@ export class ConfigManager {
 			"class:simple-scan": "@adwPreset",
 			"class:re.sonny.Workbench": "@adwPreset",
 			"class:com.mattjakeman.ExtensionManager": "@adwPreset",
+			"class:com.mitchellh.ghostty": "@adwPreset",
 			// Gtk
 			"class:org.gnome.Terminal": "@gtkPreset",
 			"class:org.gnome.seahorse.Application": "@gtkPreset",
+			"class:org.gnome.Connections": "@gtkPreset",
 			"class:firefox": "@gtkPreset",
 			"class:io.ente.auth": "@gtkPreset",
 			"class:dconf-editor": "@gtkPreset",
@@ -160,10 +162,12 @@ export class ConfigManager {
 			"class:libreoffice-writer": "@gtkPreset",
 			"class:libreoffice-impress": "@gtkPreset",
 			"class:libreoffice-draw": "@gtkPreset",
+			"class:libreoffice-base": "@gtkPreset",
 			"class:gnome-power-statistics": "@gtkPreset",
 			"class:cheese": "@gtkPreset",
 			"class:solaar": "@gtkPreset",
-			"class:org.pulseaudio.pavucontrol": "@gtkPreset",
+			"class:com.github.xournalpp.xournalpp": "@gtkPreset",
+			// "class:org.pulseaudio.pavucontrol": "@gtkPreset",
 			// Chrome
 			"regex.class:^google-chrome*": "@chromePreset",
 			// Chrome apps
