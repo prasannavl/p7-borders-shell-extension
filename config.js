@@ -71,111 +71,8 @@ export class ConfigManager {
 				this._savedAppConfigs = JSON.parse(savedConfigs);
 			} catch (error) {
 				this._logger.warn("Failed to parse saved app configs:", error);
-				this._savedAppConfigs = {};
+				this._savedAppConfigs = this._fallbackAppConfig();
 			}
-		}
-
-		if (
-			!this._savedAppConfigs ||
-			Object.keys(this._savedAppConfigs).length === 0
-		) {
-			// If no saved configs, we use the fallback which also happen to be
-			// defaults here. We have it in code instead of file to avoid unnecessary
-			// json read, as it's meant to be the infallible fallback.
-			// This should only happen on first run, and then gsettings
-			// should be the single source of truth.
-			this._savedAppConfigs = {
-				"@default": { width: 3 },
-				// Presets
-				"@zeroPreset": { maximizedBorder: true },
-				"@zeroNoMaxPreset": { maximizedBorder: false },
-				"@electronPreset": { maximizedBorder: true },
-				"@adwPreset": {
-					margins: -25,
-					radius: 18,
-				},
-				"@gtkPreset": {
-					margins: { top: -22, right: -25, bottom: -28, left: -25 },
-					radius: { tl: 10, tr: 10, br: 0, bl: 0 },
-				},
-				"@qtPreset": {
-					margins: { top: -25, right: -25, bottom: -24, left: -25 },
-					radius: { tl: 18, tr: 18, br: 0, bl: 0 },
-				},
-				"@chromePreset": {
-					margins: { top: -10, right: -16, bottom: -32, left: -16 },
-					radius: { tl: 12, tr: 12, br: 0, bl: 0 },
-				},
-				"@chromeGtkPreset": {
-					margins: { top: -8, right: -11, bottom: -13, left: -11 },
-					radius: { tl: 14, tr: 14, br: 0, bl: 0 },
-				},
-				"@zedPreset": {
-					margins: { top: -10, right: -11, bottom: -11, left: -10 },
-					radius: 14,
-				},
-				"@footPreset": { margins: { top: 27 }, maximizedBorder: true },
-				// Adw
-				"regex.class:^org.gnome.*": "@adwPreset",
-				// "regex.class:^org.freedesktop.*": "@adwPreset",
-				"class:com.github.tchx84.Flatseal": "@adwPreset",
-				"class:simple-scan": "@adwPreset",
-				"class:re.sonny.Workbench": "@adwPreset",
-				"class:com.mattjakeman.ExtensionManager": "@adwPreset",
-				// Gtk
-				"class:org.gnome.Terminal": "@gtkPreset",
-				"class:org.gnome.seahorse.Application": "@gtkPreset",
-				"class:firefox": "@gtkPreset",
-				"class:io.ente.auth": "@gtkPreset",
-				"class:dconf-editor": "@gtkPreset",
-				"class:org.gimp.GIMP": "@gtkPreset",
-				"class:gimp": "@gtkPreset",
-				"class:org.inkscape.Inkscape": "@gtkPreset",
-				"class:system-config-printer": "@gtkPreset",
-				"class:libreoffice-calc": "@gtkPreset",
-				"class:libreoffice-writer": "@gtkPreset",
-				"class:libreoffice-impress": "@gtkPreset",
-				"class:libreoffice-draw": "@gtkPreset",
-				"class:gnome-power-statistics": "@gtkPreset",
-				"class:cheese": "@gtkPreset",
-				"class:solaar": "@gtkPreset",
-				"class:org.pulseaudio.pavucontrol": "@gtkPreset",
-				// Chrome
-				"regex.class:^google-chrome*": "@chromePreset",
-				// Chrome apps
-				"regex.class:^chrome-*": "@chromePreset",
-				// Chromium
-				"regex.class:^chromium*": "@chromePreset",
-				// Electron
-				"class:obsidian": "@electronPreset",
-				"class:zulip": "@electronPreset",
-				"class:slack": "@electronPreset",
-				"class:code": "@electronPreset",
-				"class:antigravity": "@electronPreset",
-				"class:spotify": "@electronPreset",
-				"class:discord": "@electronPreset",
-				// Qt
-				"class:vlc": "@qtPreset",
-				"class:krita": "@qtPreset",
-				"class:qpwgraph": "@qtPreset",
-				// Others
-				"class:dev.zed.Zed": "@zedPreset",
-				"class:mpv": "@zeroPreset",
-				// Custom
-				"class:foot": "@footPreset",
-				"class:footclient": "@footPreset",
-				"class:Alacritty": {
-					margins: { top: 36 },
-					radius: { tl: 12, tr: 12 },
-					maximizedBorder: true,
-				},
-			};
-
-			// Save it to gsettings
-			this._settings.set_string(
-				"app-configs",
-				JSON.stringify(this._savedAppConfigs),
-			);
 		}
 
 		// Build normalized app configs
@@ -210,11 +107,101 @@ export class ConfigManager {
 		}
 	}
 
+	_fallbackAppConfig() {
+		return {
+			"@default": { width: 3 },
+			// Presets
+			"@zeroPreset": { maximizedBorder: true },
+			"@zeroNoMaxPreset": { maximizedBorder: false },
+			"@electronPreset": { maximizedBorder: true },
+			"@adwPreset": {
+				margins: -25,
+				radius: 18,
+			},
+			"@gtkPreset": {
+				margins: { top: -22, right: -25, bottom: -28, left: -25 },
+				radius: { tl: 10, tr: 10, br: 0, bl: 0 },
+			},
+			"@qtPreset": {
+				margins: { top: -25, right: -25, bottom: -24, left: -25 },
+				radius: { tl: 18, tr: 18, br: 0, bl: 0 },
+			},
+			"@chromePreset": {
+				margins: { top: -10, right: -16, bottom: -32, left: -16 },
+				radius: { tl: 12, tr: 12, br: 0, bl: 0 },
+			},
+			"@chromeGtkPreset": {
+				margins: { top: -8, right: -11, bottom: -13, left: -11 },
+				radius: { tl: 14, tr: 14, br: 0, bl: 0 },
+			},
+			"@zedPreset": {
+				margins: { top: -10, right: -11, bottom: -11, left: -10 },
+				radius: 14,
+			},
+			"@footPreset": { margins: { top: 27 }, maximizedBorder: true },
+			// Adw
+			"regex.class:^org.gnome.*": "@adwPreset",
+			// "regex.class:^org.freedesktop.*": "@adwPreset",
+			"class:com.github.tchx84.Flatseal": "@adwPreset",
+			"class:simple-scan": "@adwPreset",
+			"class:re.sonny.Workbench": "@adwPreset",
+			"class:com.mattjakeman.ExtensionManager": "@adwPreset",
+			// Gtk
+			"class:org.gnome.Terminal": "@gtkPreset",
+			"class:org.gnome.seahorse.Application": "@gtkPreset",
+			"class:firefox": "@gtkPreset",
+			"class:io.ente.auth": "@gtkPreset",
+			"class:dconf-editor": "@gtkPreset",
+			"class:org.gimp.GIMP": "@gtkPreset",
+			"class:gimp": "@gtkPreset",
+			"class:org.inkscape.Inkscape": "@gtkPreset",
+			"class:system-config-printer": "@gtkPreset",
+			"class:libreoffice-calc": "@gtkPreset",
+			"class:libreoffice-writer": "@gtkPreset",
+			"class:libreoffice-impress": "@gtkPreset",
+			"class:libreoffice-draw": "@gtkPreset",
+			"class:gnome-power-statistics": "@gtkPreset",
+			"class:cheese": "@gtkPreset",
+			"class:solaar": "@gtkPreset",
+			"class:org.pulseaudio.pavucontrol": "@gtkPreset",
+			// Chrome
+			"regex.class:^google-chrome*": "@chromePreset",
+			// Chrome apps
+			"regex.class:^chrome-*": "@chromePreset",
+			// Chromium
+			"regex.class:^chromium*": "@chromePreset",
+			// Electron
+			"class:obsidian": "@electronPreset",
+			"class:zulip": "@electronPreset",
+			"class:slack": "@electronPreset",
+			"class:code": "@electronPreset",
+			"class:antigravity": "@electronPreset",
+			"class:spotify": "@electronPreset",
+			"class:discord": "@electronPreset",
+			// Qt
+			"class:vlc": "@qtPreset",
+			"class:krita": "@qtPreset",
+			"class:qpwgraph": "@qtPreset",
+			// Others
+			"class:dev.zed.Zed": "@zedPreset",
+			"class:mpv": "@zeroPreset",
+			// Custom
+			"class:foot": "@footPreset",
+			"class:footclient": "@footPreset",
+			"class:Alacritty": {
+				margins: { top: 36 },
+				radius: { tl: 12, tr: 12 },
+				maximizedBorder: true,
+			},
+		};
+	}
+
 	_ensureDefaultsSaved() {
 		// Check if this is the first run by looking at config-version
 		const configVersion = this._settings.get_int("config-version");
+		const currentRevision = 3;
 
-		if (configVersion === 1) {
+		if (configVersion < currentRevision) {
 			// First run - save all default values to make them visible in dconf-editor
 			this._logger.log(
 				"First run detected, saving default configuration values",
@@ -235,17 +222,18 @@ export class ConfigManager {
 				this._settings.set_int(key, this._settings.get_int(key));
 			}
 
-			const stringKeys = [
-				"default-active-color",
-				"default-inactive-color",
-				"app-configs",
-			];
+			const stringKeys = ["default-active-color", "default-inactive-color"];
 			for (const key of stringKeys) {
 				this._settings.set_string(key, this._settings.get_string(key));
 			}
 
+			this._settings.set_string(
+				"app-configs",
+				JSON.stringify(this._fallbackAppConfig()),
+			);
+
 			// Update config version to indicate defaults have been saved
-			this._settings.set_int("config-version", 2);
+			this._settings.set_int("config-version", currentRevision);
 
 			this._logger.log("Default configuration values saved to dconf");
 		}
