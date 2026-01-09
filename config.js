@@ -169,6 +169,7 @@ export class ConfigManager {
 			"class:cheese": "@gtkPreset",
 			"class:solaar": "@gtkPreset",
 			"class:com.github.xournalpp.xournalpp": "@gtkPreset",
+			"class:gnome-disks": "@gtkPreset",
 			// "class:org.pulseaudio.pavucontrol": "@gtkPreset",
 			// Chrome
 			"regex.class:^google-chrome*": "@chromePreset",
