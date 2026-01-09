@@ -5,6 +5,8 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { applyBorderState, getWindowState } from "./compat.js";
 import { ConfigManager } from "./config.js";
 
+const isLiveObject = (object) => !!(object && !object.is_destroyed?.());
+
 export class BorderManager {
 	constructor(logger, settings) {
 		this._logger = logger;
@@ -20,7 +22,7 @@ export class BorderManager {
 			tracks: new Map(),
 			syncs: new Map(),
 			hasTrack: (metaWindow) => this._pending.tracks.has(metaWindow),
-			track: (metaWindow, entries) => {
+			_track: (metaWindow, entries) => {
 				const token = {};
 				const objects = [];
 				for (const { object, signal, handler } of entries) {
@@ -29,12 +31,24 @@ export class BorderManager {
 				}
 				this._pending.tracks.set(metaWindow, { objects, token });
 			},
+			addTrack: (metaWindow, entries) => {
+				if (this._pending.hasTrack(metaWindow)) return true;
+				this._pending._track(metaWindow, [
+					...entries,
+					{
+						object: metaWindow,
+						signal: "unmanaged",
+						handler: () => this._pending.clearTrack(metaWindow),
+					},
+				]);
+				return true;
+			},
 			clearTrack: (metaWindow) => {
 				const pending = this._pending.tracks.get(metaWindow);
 				if (!pending) return;
 				const { objects, token } = pending;
 				for (const object of objects) {
-					if (object && !object.is_destroyed?.())
+					if (isLiveObject(object))
 						object.disconnectObject(token);
 				}
 				this._pending.tracks.delete(metaWindow);
@@ -43,19 +57,14 @@ export class BorderManager {
 				for (const [_win, pending] of this._pending.tracks.entries()) {
 					const { objects, token } = pending;
 					for (const object of objects) {
-						if (object && !object.is_destroyed?.())
+						if (isLiveObject(object))
 							object.disconnectObject(token);
 					}
 				}
 				this._pending.tracks.clear();
 			},
-			clearSync: (metaWindow) => {
-				const pendingSyncId = this._pending.syncs.get(metaWindow);
-				if (!pendingSyncId) return;
-				GLib.Source.remove(pendingSyncId);
-				this._pending.syncs.delete(metaWindow);
-			},
-			scheduleSync: (metaWindow, callback) => {
+
+			addSync: (metaWindow, callback) => {
 				this._pending.clearSync(metaWindow);
 				const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 					this._pending.syncs.delete(metaWindow);
@@ -63,6 +72,12 @@ export class BorderManager {
 					return GLib.SOURCE_REMOVE;
 				});
 				this._pending.syncs.set(metaWindow, idleId);
+			},
+			clearSync: (metaWindow) => {
+				const pendingSyncId = this._pending.syncs.get(metaWindow);
+				if (!pendingSyncId) return;
+				GLib.Source.remove(pendingSyncId);
+				this._pending.syncs.delete(metaWindow);
 			},
 			clearAllSyncs: () => {
 				for (const [_win, syncId] of this._pending.syncs.entries()) {
@@ -162,7 +177,7 @@ export class BorderManager {
 		if (!data || !this._isLiveWindowData(data)) return;
 
 		// Schedule sync on next idle cycle for smooth updates
-		this._pending.scheduleSync(metaWindow, () => {
+		this._pending.addSync(metaWindow, () => {
 			if (this._isLiveWindowData(data)) {
 				this._syncBorderToActor(metaWindow, data);
 			}
@@ -172,8 +187,8 @@ export class BorderManager {
 	_isLiveWindowData(data) {
 		return !!(
 			data &&
-			!data.actor?.is_destroyed?.() &&
-			!data.border?.is_destroyed?.()
+			isLiveObject(data.actor) &&
+			isLiveObject(data.border)
 		);
 	}
 
@@ -182,14 +197,8 @@ export class BorderManager {
 	}
 
 	_waitForActorReady(metaWindow, actor) {
-		const setPending = (entries) => {
-			if (this._pending.hasTrack(metaWindow)) return true;
-			this._pending.track(metaWindow, entries);
-			return true;
-		};
-
 		if (!actor) {
-			return setPending([
+			return this._pending.addTrack(metaWindow, [
 				{
 					object: metaWindow,
 					signal: "shown",
@@ -197,11 +206,6 @@ export class BorderManager {
 						this._pending.clearTrack(metaWindow);
 						this._tryTrackWindow(metaWindow);
 					},
-				},
-				{
-					object: metaWindow,
-					signal: "unmanaged",
-					handler: () => this._pending.clearTrack(metaWindow),
 				},
 			]);
 		}
@@ -211,7 +215,7 @@ export class BorderManager {
 		const allocHeight = allocation ? allocation.get_height() : 0;
 
 		if (!allocation || allocWidth <= 0 || allocHeight <= 0) {
-			return setPending([
+			return this._pending.addTrack(metaWindow, [
 				{
 					object: actor,
 					signal: "notify::allocation",
@@ -224,11 +228,6 @@ export class BorderManager {
 							this._tryTrackWindow(metaWindow);
 						}
 					},
-				},
-				{
-					object: metaWindow,
-					signal: "unmanaged",
-					handler: () => this._pending.clearTrack(metaWindow),
 				},
 			]);
 		}
