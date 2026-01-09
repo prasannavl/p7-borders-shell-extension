@@ -48,8 +48,7 @@ export class BorderManager {
 				if (!pending) return;
 				const { objects, token } = pending;
 				for (const object of objects) {
-					if (isLiveObject(object))
-						object.disconnectObject(token);
+					if (isLiveObject(object)) object.disconnectObject(token);
 				}
 				this._pending.tracks.delete(metaWindow);
 			},
@@ -57,8 +56,7 @@ export class BorderManager {
 				for (const [_win, pending] of this._pending.tracks.entries()) {
 					const { objects, token } = pending;
 					for (const object of objects) {
-						if (isLiveObject(object))
-							object.disconnectObject(token);
+						if (isLiveObject(object)) object.disconnectObject(token);
 					}
 				}
 				this._pending.tracks.clear();
@@ -185,11 +183,7 @@ export class BorderManager {
 	}
 
 	_isLiveWindowData(data) {
-		return !!(
-			data &&
-			isLiveObject(data.actor) &&
-			isLiveObject(data.border)
-		);
+		return !!(data && isLiveObject(data.actor) && isLiveObject(data.border));
 	}
 
 	_isVerboseLogging() {

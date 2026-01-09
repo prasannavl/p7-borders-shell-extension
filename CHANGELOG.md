@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [24] - 2025-01-09
+
+- Internal cleanup.
+
 ## [23] - 2025-01-08
 
 - More robust tracking and cleanup handling.
