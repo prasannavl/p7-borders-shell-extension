@@ -12,6 +12,7 @@ lint:
 
 fmt:
 	biome format --fix $(JS_FILES)
+	nix fmt -- .
 
 schemas:
 	glib-compile-schemas $(SCHEMAS_DIR)

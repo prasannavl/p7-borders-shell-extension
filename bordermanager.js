@@ -9,8 +9,8 @@ import { ConfigManager } from "./config.js";
 // without us being notified correctly. Often happens in cases
 // where gfx card bugs, etc. Gfx resets might happen and actors are lost.
 // Some case the shell recovers, some case it might not, but still doing
-// these checks avoid adding extra red-herring and makes things 
-// more graceful. 
+// these checks avoid adding extra red-herring and makes things
+// more graceful.
 const isLiveObject = (object) => !!(object && !object.is_destroyed?.());
 
 export class BorderManager {
@@ -28,7 +28,7 @@ export class BorderManager {
 		// The pending object tracker handles all the nuances in window
 		// tracking before it's handed over cleanly post init.
 		// This contains the edge cases to cleanup signals in the mid
-		// state between when a new window singal from mutter 
+		// state between when a new window singal from mutter
 		// and when we actually track a window fully (which happens
 		// only after the actor has been allocated).
 		// It additionally also takes care of sync queues.
@@ -207,7 +207,7 @@ export class BorderManager {
 
 	_waitForActorReady(metaWindow, actor) {
 		// There are times we do get empty actors. If we
-		// don't check for them, it causes a flood of 
+		// don't check for them, it causes a flood of
 		// noisy errors from gnome-shell.
 		if (!actor) {
 			return this._pending.addTrack(metaWindow, [
