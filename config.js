@@ -110,6 +110,12 @@ export class ConfigManager {
 	}
 
 	_fallbackAppConfig() {
+			// If no saved configs, we use the fallback which also 
+			// happen to be defaults here. We have it in code instead
+			// of file to avoid unnecessary json read, as it's meant
+			// to be the infallible fallback. This should only happen
+			// on first run, and then gsettings should be the single
+			// source of truth.
 		return {
 			"@default": { width: 3 },
 			// Presets

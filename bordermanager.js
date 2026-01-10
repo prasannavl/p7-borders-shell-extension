@@ -5,6 +5,12 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { applyBorderState, getWindowState } from "./compat.js";
 import { ConfigManager } from "./config.js";
 
+// We do these live GObject checks as gnome shell can lose it's actors
+// without us being notified correctly. Often happens in cases
+// where gfx card bugs, etc. Gfx resets might happen and actors are lost.
+// Some case the shell recovers, some case it might not, but still doing
+// these checks avoid adding extra red-herring and makes things 
+// more graceful. 
 const isLiveObject = (object) => !!(object && !object.is_destroyed?.());
 
 export class BorderManager {
@@ -18,6 +24,14 @@ export class BorderManager {
 		 *   borderStyleCache: string | null,
 		 * }>} */
 		this._windowData = new Map();
+
+		// The pending object tracker handles all the nuances in window
+		// tracking before it's handed over cleanly post init.
+		// This contains the edge cases to cleanup signals in the mid
+		// state between when a new window singal from mutter 
+		// and when we actually track a window fully (which happens
+		// only after the actor has been allocated).
+		// It additionally also takes care of sync queues.
 		this._pending = {
 			tracks: new Map(),
 			syncs: new Map(),
@@ -63,6 +77,7 @@ export class BorderManager {
 			},
 
 			addSync: (metaWindow, callback) => {
+				// Coalesce rapid updates: only the last scheduled sync runs
 				this._pending.clearSync(metaWindow);
 				const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
 					this._pending.syncs.delete(metaWindow);
@@ -191,6 +206,9 @@ export class BorderManager {
 	}
 
 	_waitForActorReady(metaWindow, actor) {
+		// There are times we do get empty actors. If we
+		// don't check for them, it causes a flood of 
+		// noisy errors from gnome-shell.
 		if (!actor) {
 			return this._pending.addTrack(metaWindow, [
 				{
@@ -208,6 +226,8 @@ export class BorderManager {
 		const allocWidth = allocation ? allocation.get_width() : 0;
 		const allocHeight = allocation ? allocation.get_height() : 0;
 
+		// DEFENSIVE checks to schedule when actor exists
+		// but has zero allocation initially
 		if (!allocation || allocWidth <= 0 || allocHeight <= 0) {
 			return this._pending.addTrack(metaWindow, [
 				{
@@ -266,6 +286,7 @@ export class BorderManager {
 		// will not immediately be ready on window creation
 		const actor = metaWindow.get_compositor_private();
 		if (this._waitForActorReady(metaWindow, actor)) return;
+
 		// We're ready now to actually do the work.
 
 		const border = new St.Widget({
