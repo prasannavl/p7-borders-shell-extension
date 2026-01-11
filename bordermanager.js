@@ -11,7 +11,16 @@ import { ConfigManager } from "./config.js";
 // Some case the shell recovers, some case it might not, but still doing
 // these checks avoid adding extra red-herring and makes things
 // more graceful.
-const isLiveObject = (object) => !!(object && !object.is_destroyed?.());
+const isLiveObject = (object) => {
+	if (!object) return false;
+	try {
+		if (typeof object.is_destroyed !== "function") return false;
+		return !object.is_destroyed();
+	} catch {
+		// GJS throws if the underlying GObject has been disposed.
+		return false;
+	}
+};
 
 export class BorderManager {
 	constructor(logger, settings) {
@@ -187,11 +196,12 @@ export class BorderManager {
 	}
 
 	_queueUpdate(metaWindow, data) {
-		if (!data || !this._isLiveWindowData(data)) return;
+		if (!data || !isLiveObject(metaWindow) || !this._isLiveWindowData(data))
+			return;
 
 		// Schedule sync on next idle cycle for smooth updates
 		this._pending.addSync(metaWindow, () => {
-			if (this._isLiveWindowData(data)) {
+			if (isLiveObject(metaWindow) && this._isLiveWindowData(data)) {
 				this._syncBorderToActor(metaWindow, data);
 			}
 		});
@@ -364,8 +374,8 @@ export class BorderManager {
 		this._logWindow(metaWindow, "untrack", data.config);
 
 		const { border, actor } = data;
-		metaWindow.disconnectObject(this);
-		if (actor) actor.disconnectObject(this);
+		if (isLiveObject(metaWindow)) metaWindow.disconnectObject(this);
+		if (isLiveObject(actor)) actor.disconnectObject(this);
 
 		if (this._isLiveWindowData(data) && border.get_parent?.() === actor) {
 			actor.remove_child(border);
@@ -504,11 +514,11 @@ function computeBorderState(windowState, config) {
 		!radiusEnabled || maximize.any
 			? ZERO_RADIUS
 			: {
-					tl: edges.top && edges.left ? 0 : radius.tl,
-					tr: edges.top && edges.right ? 0 : radius.tr,
-					br: edges.bottom && edges.right ? 0 : radius.br,
-					bl: edges.bottom && edges.left ? 0 : radius.bl,
-				};
+				tl: edges.top && edges.left ? 0 : radius.tl,
+				tr: edges.top && edges.right ? 0 : radius.tr,
+				br: edges.bottom && edges.right ? 0 : radius.br,
+				bl: edges.bottom && edges.left ? 0 : radius.bl,
+			};
 
 	const pos = {
 		x: -margins.left - borderWidths.left,
@@ -519,18 +529,18 @@ function computeBorderState(windowState, config) {
 		width: Math.max(
 			1,
 			width +
-				margins.left +
-				margins.right +
-				borderWidths.left +
-				borderWidths.right,
+			margins.left +
+			margins.right +
+			borderWidths.left +
+			borderWidths.right,
 		),
 		height: Math.max(
 			1,
 			height +
-				margins.top +
-				margins.bottom +
-				borderWidths.top +
-				borderWidths.bottom,
+			margins.top +
+			margins.bottom +
+			borderWidths.top +
+			borderWidths.bottom,
 		),
 	};
 
