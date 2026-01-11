@@ -14,7 +14,9 @@ import { ConfigManager } from "./config.js";
 const isLiveObject = (object) => {
 	if (!object) return false;
 	try {
-		if (typeof object.is_destroyed !== "function") return false;
+		// If is_destroyed is not present, assume live
+		if (typeof object.is_destroyed !== "function") return true;
+		// If we have, it depend on it's result
 		return !object.is_destroyed();
 	} catch {
 		// GJS throws if the underlying GObject has been disposed.
@@ -196,9 +198,6 @@ export class BorderManager {
 	}
 
 	_queueUpdate(metaWindow, data) {
-		if (!data || !isLiveObject(metaWindow) || !this._isLiveWindowData(data))
-			return;
-
 		// Schedule sync on next idle cycle for smooth updates
 		this._pending.addSync(metaWindow, () => {
 			if (isLiveObject(metaWindow) && this._isLiveWindowData(data)) {

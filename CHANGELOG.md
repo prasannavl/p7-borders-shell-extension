@@ -2,7 +2,11 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [26] - 2025-01-09
+## [27] - 2025-01-11
+
+- Regression fix: Re-enable borders due to improper actors check.
+
+## [26] - 2025-01-10
 
 - Internal: Better safety against disposed actors.
 
