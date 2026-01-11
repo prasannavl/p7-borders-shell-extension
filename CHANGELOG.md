@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [26] - 2025-01-09
+
+- Internal: Better safety against disposed actors.
+
 ## [24] - 2025-01-09
 
 - Internal cleanup.
