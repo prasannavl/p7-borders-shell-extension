@@ -1,0 +1,8 @@
+[formatter.alejandra]
+command = "alejandra"
+includes = ["**/*.nix"]
+
+[formatter.deno]
+command = "deno"
+options = ["fmt"]
+includes = ["*.js", "**/*.js", "*.md", "**/*.md"]

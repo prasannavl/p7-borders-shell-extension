@@ -24,8 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [21] - 2025-01-08
 
-- Regression fix: Fixes the tracker cleanup logic bug that was introduced in
-  v20 and some more code clean-up.
+- Regression fix: Fixes the tracker cleanup logic bug that was introduced in v20
+  and some more code clean-up.
 
 ## [20] - 2025-01-08
 
@@ -39,14 +39,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - For case specific matching, the regex prefixes can be used.
 
 - Option: `modal-enabled` (default: `false`)
-  - By default we now only apply to top level windows only skipping models.
-    This is default since can't know what toolkits or margins the modals will
-    use that can defer from the top level window. The option is there to
-    enable older behavior if needed.
+  - By default we now only apply to top level windows only skipping models. This
+    is default since can't know what toolkits or margins the modals will use
+    that can defer from the top level window. The option is there to enable
+    older behavior if needed.
 
-- Bugfix: Preferences: app config add, remove, delete inconsistencies in the UI. 
+- Bugfix: Preferences: app config add, remove, delete inconsistencies in the UI.
 - Updated config.
-
 
 ## [1] - 2025-12-27
 

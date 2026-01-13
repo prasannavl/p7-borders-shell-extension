@@ -12,543 +12,541 @@ import { ConfigManager } from "./config.js";
 // these checks avoid adding extra red-herring and makes things
 // more graceful.
 const isLiveObject = (object) => {
-	if (!object) return false;
-	try {
-		// If is_destroyed is not present, assume live
-		if (typeof object.is_destroyed !== "function") return true;
-		// If we have, it depend on it's result
-		return !object.is_destroyed();
-	} catch {
-		// GJS throws if the underlying GObject has been disposed.
-		return false;
-	}
+  if (!object) return false;
+  try {
+    // If is_destroyed is not present, assume live
+    if (typeof object.is_destroyed !== "function") return true;
+    // If we have, it depend on it's result
+    return !object.is_destroyed();
+  } catch {
+    // GJS throws if the underlying GObject has been disposed.
+    return false;
+  }
 };
 
 export class BorderManager {
-	constructor(logger, settings) {
-		this._logger = logger;
+  constructor(logger, settings) {
+    this._logger = logger;
 
-		/** @type {Map<Meta.Window, {
-		 *   border: St.Widget,
-		 *   actor: Meta.WindowActor,
-		 *   config: any,
-		 *   borderStyleCache: string | null,
-		 * }>} */
-		this._windowData = new Map();
+    /** @type {Map<Meta.Window, {
+     *   border: St.Widget,
+     *   actor: Meta.WindowActor,
+     *   config: any,
+     *   borderStyleCache: string | null,
+     * }>} */
+    this._windowData = new Map();
 
-		// The pending object tracker handles all the nuances in window
-		// tracking before it's handed over cleanly post init.
-		// This contains the edge cases to cleanup signals in the mid
-		// state between when a new window singal from mutter
-		// and when we actually track a window fully (which happens
-		// only after the actor has been allocated).
-		// It additionally also takes care of sync queues.
-		this._pending = {
-			tracks: new Map(),
-			syncs: new Map(),
-			hasTrack: (metaWindow) => this._pending.tracks.has(metaWindow),
-			_track: (metaWindow, entries) => {
-				const token = {};
-				const objects = [];
-				for (const { object, signal, handler } of entries) {
-					object.connectObject(signal, handler, token);
-					objects.push(object);
-				}
-				this._pending.tracks.set(metaWindow, { objects, token });
-			},
-			addTrack: (metaWindow, entries) => {
-				if (this._pending.hasTrack(metaWindow)) return true;
-				this._pending._track(metaWindow, [
-					...entries,
-					{
-						object: metaWindow,
-						signal: "unmanaged",
-						handler: () => this._pending.clearTrack(metaWindow),
-					},
-				]);
-				return true;
-			},
-			clearTrack: (metaWindow) => {
-				const pending = this._pending.tracks.get(metaWindow);
-				if (!pending) return;
-				const { objects, token } = pending;
-				for (const object of objects) {
-					if (isLiveObject(object)) object.disconnectObject(token);
-				}
-				this._pending.tracks.delete(metaWindow);
-			},
-			clearAllTracks: () => {
-				for (const [_win, pending] of this._pending.tracks.entries()) {
-					const { objects, token } = pending;
-					for (const object of objects) {
-						if (isLiveObject(object)) object.disconnectObject(token);
-					}
-				}
-				this._pending.tracks.clear();
-			},
+    // The pending object tracker handles all the nuances in window
+    // tracking before it's handed over cleanly post init.
+    // This contains the edge cases to cleanup signals in the mid
+    // state between when a new window singal from mutter
+    // and when we actually track a window fully (which happens
+    // only after the actor has been allocated).
+    // It additionally also takes care of sync queues.
+    this._pending = {
+      tracks: new Map(),
+      syncs: new Map(),
+      hasTrack: (metaWindow) => this._pending.tracks.has(metaWindow),
+      _track: (metaWindow, entries) => {
+        const token = {};
+        const objects = [];
+        for (const { object, signal, handler } of entries) {
+          object.connectObject(signal, handler, token);
+          objects.push(object);
+        }
+        this._pending.tracks.set(metaWindow, { objects, token });
+      },
+      addTrack: (metaWindow, entries) => {
+        if (this._pending.hasTrack(metaWindow)) return true;
+        this._pending._track(metaWindow, [
+          ...entries,
+          {
+            object: metaWindow,
+            signal: "unmanaged",
+            handler: () => this._pending.clearTrack(metaWindow),
+          },
+        ]);
+        return true;
+      },
+      clearTrack: (metaWindow) => {
+        const pending = this._pending.tracks.get(metaWindow);
+        if (!pending) return;
+        const { objects, token } = pending;
+        for (const object of objects) {
+          if (isLiveObject(object)) object.disconnectObject(token);
+        }
+        this._pending.tracks.delete(metaWindow);
+      },
+      clearAllTracks: () => {
+        for (const [_win, pending] of this._pending.tracks.entries()) {
+          const { objects, token } = pending;
+          for (const object of objects) {
+            if (isLiveObject(object)) object.disconnectObject(token);
+          }
+        }
+        this._pending.tracks.clear();
+      },
 
-			addSync: (metaWindow, callback) => {
-				// Coalesce rapid updates: only the last scheduled sync runs
-				this._pending.clearSync(metaWindow);
-				const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-					this._pending.syncs.delete(metaWindow);
-					callback();
-					return GLib.SOURCE_REMOVE;
-				});
-				this._pending.syncs.set(metaWindow, idleId);
-			},
-			clearSync: (metaWindow) => {
-				const pendingSyncId = this._pending.syncs.get(metaWindow);
-				if (!pendingSyncId) return;
-				GLib.Source.remove(pendingSyncId);
-				this._pending.syncs.delete(metaWindow);
-			},
-			clearAllSyncs: () => {
-				for (const [_win, syncId] of this._pending.syncs.entries()) {
-					GLib.Source.remove(syncId);
-				}
-				this._pending.syncs.clear();
-			},
-			clearForWindow: (metaWindow) => {
-				this._pending.clearTrack(metaWindow);
-				this._pending.clearSync(metaWindow);
-			},
-			clearAll: () => {
-				this._pending.clearAllSyncs();
-				this._pending.clearAllTracks();
-			},
-			trackCount: () => this._pending.tracks.size,
-		};
-		/** @type {Meta.Window | null} */
-		this._lastFocusedWindow = null;
+      addSync: (metaWindow, callback) => {
+        // Coalesce rapid updates: only the last scheduled sync runs
+        this._pending.clearSync(metaWindow);
+        const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+          this._pending.syncs.delete(metaWindow);
+          callback();
+          return GLib.SOURCE_REMOVE;
+        });
+        this._pending.syncs.set(metaWindow, idleId);
+      },
+      clearSync: (metaWindow) => {
+        const pendingSyncId = this._pending.syncs.get(metaWindow);
+        if (!pendingSyncId) return;
+        GLib.Source.remove(pendingSyncId);
+        this._pending.syncs.delete(metaWindow);
+      },
+      clearAllSyncs: () => {
+        for (const [_win, syncId] of this._pending.syncs.entries()) {
+          GLib.Source.remove(syncId);
+        }
+        this._pending.syncs.clear();
+      },
+      clearForWindow: (metaWindow) => {
+        this._pending.clearTrack(metaWindow);
+        this._pending.clearSync(metaWindow);
+      },
+      clearAll: () => {
+        this._pending.clearAllSyncs();
+        this._pending.clearAllTracks();
+      },
+      trackCount: () => this._pending.tracks.size,
+    };
+    /** @type {Meta.Window | null} */
+    this._lastFocusedWindow = null;
 
-		/** @type {ConfigManager | null} */
-		this.configManager = new ConfigManager(settings, this._logger);
-		this._configChangeCallback = (x) => this._onConfigChanged(x);
-		this.configManager.addConfigChangeListener(this._configChangeCallback);
-	}
+    /** @type {ConfigManager | null} */
+    this.configManager = new ConfigManager(settings, this._logger);
+    this._configChangeCallback = (x) => this._onConfigChanged(x);
+    this.configManager.addConfigChangeListener(this._configChangeCallback);
+  }
 
-	// --- Helpers ------------------------------------------------------------
+  // --- Helpers ------------------------------------------------------------
 
-	_isInterestingWindow(metaWindow) {
-		const modalEnabled =
-			this.configManager?.globalConfig?.modalEnabled ?? false;
+  _isInterestingWindow(metaWindow) {
+    const modalEnabled = this.configManager?.globalConfig?.modalEnabled ??
+      false;
 
-		if (!modalEnabled) {
-			const transientFor = metaWindow.get_transient_for?.();
-			if (transientFor) return false;
-			if (metaWindow.is_attached_dialog?.()) return false;
-		}
+    if (!modalEnabled) {
+      const transientFor = metaWindow.get_transient_for?.();
+      if (transientFor) return false;
+      if (metaWindow.is_attached_dialog?.()) return false;
+    }
 
-		const type = metaWindow.get_window_type();
+    const type = metaWindow.get_window_type();
 
-		const WindowType = Meta.WindowType;
-		if (type === WindowType.MODAL_DIALOG) return modalEnabled;
-		return type === WindowType.NORMAL || type === WindowType.DIALOG;
-	}
+    const WindowType = Meta.WindowType;
+    if (type === WindowType.MODAL_DIALOG) return modalEnabled;
+    return type === WindowType.NORMAL || type === WindowType.DIALOG;
+  }
 
-	_resyncAll() {
-		for (const [win, data] of this._windowData.entries()) {
-			// Get fresh config to ensure we have latest colors/settings
-			const config = this.configManager.getConfigForWindow(win);
-			data.config = config;
-			this._invalidateAndUpdate(win, data);
-		}
-	}
+  _resyncAll() {
+    for (const [win, data] of this._windowData.entries()) {
+      // Get fresh config to ensure we have latest colors/settings
+      const config = this.configManager.getConfigForWindow(win);
+      data.config = config;
+      this._invalidateAndUpdate(win, data);
+    }
+  }
 
-	_hideBorder(data) {
-		if (!data) return;
-		data.border.visible = false;
-		data.borderStyleCache = null;
-	}
+  _hideBorder(data) {
+    if (!data) return;
+    data.border.visible = false;
+    data.borderStyleCache = null;
+  }
 
-	_invalidateAndUpdate(metaWindow, data) {
-		if (!data) return;
-		data.borderStyleCache = null;
-		this._queueUpdate(metaWindow, data);
-	}
+  _invalidateAndUpdate(metaWindow, data) {
+    if (!data) return;
+    data.borderStyleCache = null;
+    this._queueUpdate(metaWindow, data);
+  }
 
-	_logWindow(metaWindow, prefix, config, extra) {
-		if (!this._isVerboseLogging()) return;
-		const title = metaWindow.get_title() || "untitled";
-		const wmClass = metaWindow.get_wm_class() || "unknown";
-		const configTail = config
-			? ` m: ${JSON.stringify(config.margins)}, r: ${JSON.stringify(config.radius)}`
-			: "";
-		const extraTail = extra ? ` ${extra}` : "";
-		this._logger.log(
-			`${prefix}: ${title} (class: ${wmClass})${configTail}${extraTail}`,
-		);
-	}
+  _logWindow(metaWindow, prefix, config, extra) {
+    if (!this._isVerboseLogging()) return;
+    const title = metaWindow.get_title() || "untitled";
+    const wmClass = metaWindow.get_wm_class() || "unknown";
+    const configTail = config
+      ? ` m: ${JSON.stringify(config.margins)}, r: ${
+        JSON.stringify(config.radius)
+      }`
+      : "";
+    const extraTail = extra ? ` ${extra}` : "";
+    this._logger.log(
+      `${prefix}: ${title} (class: ${wmClass})${configTail}${extraTail}`,
+    );
+  }
 
-	_untrackAllWindows() {
-		const tracked = Array.from(this._windowData.keys());
-		for (const win of tracked) this._untrackWindow(win);
-	}
+  _untrackAllWindows() {
+    const tracked = Array.from(this._windowData.keys());
+    for (const win of tracked) this._untrackWindow(win);
+  }
 
-	_trackAllWindows() {
-		for (const win of global.display.list_all_windows())
-			this._tryTrackWindow(win);
-	}
+  _trackAllWindows() {
+    for (const win of global.display.list_all_windows()) {
+      this._tryTrackWindow(win);
+    }
+  }
 
-	_retrackAllWindows() {
-		this._pending.clearAll();
-		this._untrackAllWindows();
-		this._trackAllWindows();
-	}
+  _retrackAllWindows() {
+    this._pending.clearAll();
+    this._untrackAllWindows();
+    this._trackAllWindows();
+  }
 
-	_queueUpdate(metaWindow, data) {
-		// Schedule sync on next idle cycle for smooth updates
-		this._pending.addSync(metaWindow, () => {
-			if (isLiveObject(metaWindow) && this._isLiveWindowData(data)) {
-				this._syncBorderToActor(metaWindow, data);
-			}
-		});
-	}
+  _queueUpdate(metaWindow, data) {
+    // Schedule sync on next idle cycle for smooth updates
+    this._pending.addSync(metaWindow, () => {
+      if (isLiveObject(metaWindow) && this._isLiveWindowData(data)) {
+        this._syncBorderToActor(metaWindow, data);
+      }
+    });
+  }
 
-	_isLiveWindowData(data) {
-		return !!(data && isLiveObject(data.actor) && isLiveObject(data.border));
-	}
+  _isLiveWindowData(data) {
+    return !!(data && isLiveObject(data.actor) && isLiveObject(data.border));
+  }
 
-	_isVerboseLogging() {
-		return !!this.configManager?.globalConfig?.verboseLogging;
-	}
+  _isVerboseLogging() {
+    return !!this.configManager?.globalConfig?.verboseLogging;
+  }
 
-	_waitForActorReady(metaWindow, actor) {
-		// There are times we do get empty actors. If we
-		// don't check for them, it causes a flood of
-		// noisy errors from gnome-shell.
-		if (!actor) {
-			return this._pending.addTrack(metaWindow, [
-				{
-					object: metaWindow,
-					signal: "shown",
-					handler: () => {
-						this._pending.clearTrack(metaWindow);
-						this._tryTrackWindow(metaWindow);
-					},
-				},
-			]);
-		}
+  _waitForActorReady(metaWindow, actor) {
+    // There are times we do get empty actors. If we
+    // don't check for them, it causes a flood of
+    // noisy errors from gnome-shell.
+    if (!actor) {
+      return this._pending.addTrack(metaWindow, [
+        {
+          object: metaWindow,
+          signal: "shown",
+          handler: () => {
+            this._pending.clearTrack(metaWindow);
+            this._tryTrackWindow(metaWindow);
+          },
+        },
+      ]);
+    }
 
-		const allocation = actor.get_allocation_box();
-		const allocWidth = allocation ? allocation.get_width() : 0;
-		const allocHeight = allocation ? allocation.get_height() : 0;
+    const allocation = actor.get_allocation_box();
+    const allocWidth = allocation ? allocation.get_width() : 0;
+    const allocHeight = allocation ? allocation.get_height() : 0;
 
-		// DEFENSIVE checks to schedule when actor exists
-		// but has zero allocation initially
-		if (!allocation || allocWidth <= 0 || allocHeight <= 0) {
-			return this._pending.addTrack(metaWindow, [
-				{
-					object: actor,
-					signal: "notify::allocation",
-					handler: () => {
-						const alloc = actor.get_allocation_box();
-						const w = alloc ? alloc.get_width() : 0;
-						const h = alloc ? alloc.get_height() : 0;
-						if (alloc && w > 0 && h > 0) {
-							this._pending.clearTrack(metaWindow);
-							this._tryTrackWindow(metaWindow);
-						}
-					},
-				},
-			]);
-		}
+    // DEFENSIVE checks to schedule when actor exists
+    // but has zero allocation initially
+    if (!allocation || allocWidth <= 0 || allocHeight <= 0) {
+      return this._pending.addTrack(metaWindow, [
+        {
+          object: actor,
+          signal: "notify::allocation",
+          handler: () => {
+            const alloc = actor.get_allocation_box();
+            const w = alloc ? alloc.get_width() : 0;
+            const h = alloc ? alloc.get_height() : 0;
+            if (alloc && w > 0 && h > 0) {
+              this._pending.clearTrack(metaWindow);
+              this._tryTrackWindow(metaWindow);
+            }
+          },
+        },
+      ]);
+    }
 
-		return false;
-	}
+    return false;
+  }
 
-	// --- Core geometry + style sync -----------------------------------------
+  // --- Core geometry + style sync -----------------------------------------
 
-	_syncBorderToActor(metaWindow, data) {
-		const { border, actor, config } = data;
+  _syncBorderToActor(metaWindow, data) {
+    const { border, actor, config } = data;
 
-		const windowState = getWindowState(metaWindow, actor);
-		const policyState = computeBorderState(windowState, config);
+    const windowState = getWindowState(metaWindow, actor);
+    const policyState = computeBorderState(windowState, config);
 
-		applyBorderState(border, policyState, data);
-	}
+    applyBorderState(border, policyState, data);
+  }
 
-	// --- Per-window lifecycle -----------------------------------------------
+  // --- Per-window lifecycle -----------------------------------------------
 
-	_updateWindowConfig(metaWindow) {
-		const data = this._windowData.get(metaWindow);
-		if (!data) return;
+  _updateWindowConfig(metaWindow) {
+    const data = this._windowData.get(metaWindow);
+    if (!data) return;
 
-		const config = this.configManager.getConfigForWindow(metaWindow);
+    const config = this.configManager.getConfigForWindow(metaWindow);
 
-		// Only update if config actually changed
-		if (data.config === config) return;
+    // Only update if config actually changed
+    if (data.config === config) return;
 
-		data.config = config;
+    data.config = config;
 
-		this._invalidateAndUpdate(metaWindow, data);
+    this._invalidateAndUpdate(metaWindow, data);
 
-		this._logWindow(metaWindow, "config updated", config);
-	}
+    this._logWindow(metaWindow, "config updated", config);
+  }
 
-	_tryTrackWindow(metaWindow) {
-		if (!this._isInterestingWindow(metaWindow)) return;
-		if (this._windowData.has(metaWindow)) return;
+  _tryTrackWindow(metaWindow) {
+    if (!this._isInterestingWindow(metaWindow)) return;
+    if (this._windowData.has(metaWindow)) return;
 
-		// DEFENSIVE checks to first schedule since the actor
-		// will not immediately be ready on window creation
-		const actor = metaWindow.get_compositor_private();
-		if (this._waitForActorReady(metaWindow, actor)) return;
+    // DEFENSIVE checks to first schedule since the actor
+    // will not immediately be ready on window creation
+    const actor = metaWindow.get_compositor_private();
+    if (this._waitForActorReady(metaWindow, actor)) return;
 
-		// We're ready now to actually do the work.
+    // We're ready now to actually do the work.
 
-		const border = new St.Widget({
-			reactive: false,
-			visible: false,
-		});
+    const border = new St.Widget({
+      reactive: false,
+      visible: false,
+    });
 
-		// Ensure we can draw outside if "outer" expands
-		actor.clip_to_allocation = false;
-		border.clip_to_allocation = false;
+    // Ensure we can draw outside if "outer" expands
+    actor.clip_to_allocation = false;
+    border.clip_to_allocation = false;
 
-		actor.add_child(border);
-		actor.set_child_above_sibling(border, null);
+    actor.add_child(border);
+    actor.set_child_above_sibling(border, null);
 
-		const config = this.configManager.getConfigForWindow(metaWindow);
-		actor.connectObject(
-			"notify::allocation",
-			() => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
-			this,
-		);
-		metaWindow.connectObject(
-			"unmanaged",
-			() => this._untrackWindow(metaWindow),
-			"notify::fullscreen",
-			() => {
-				const data = this._windowData.get(metaWindow);
-				if (metaWindow.fullscreen) {
-					this._hideBorder(data);
-				} else {
-					this._queueUpdate(metaWindow, data);
-				}
-			},
-			"notify::wm-class",
-			() => this._updateWindowConfig(metaWindow),
-			"notify::gtk-application-id",
-			() => this._updateWindowConfig(metaWindow),
-			"notify::title",
-			() => this._updateWindowConfig(metaWindow),
-			"notify::appears-focused",
-			() => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
-			"position-changed",
-			() => {
-				// Prevent mutter from leaving artifacts when moving windows quickly
-				// until resize is fully complete.
-				border.queue_redraw();
-			},
-			this,
-		);
+    const config = this.configManager.getConfigForWindow(metaWindow);
+    actor.connectObject(
+      "notify::allocation",
+      () => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
+      this,
+    );
+    metaWindow.connectObject(
+      "unmanaged",
+      () => this._untrackWindow(metaWindow),
+      "notify::fullscreen",
+      () => {
+        const data = this._windowData.get(metaWindow);
+        if (metaWindow.fullscreen) {
+          this._hideBorder(data);
+        } else {
+          this._queueUpdate(metaWindow, data);
+        }
+      },
+      "notify::wm-class",
+      () => this._updateWindowConfig(metaWindow),
+      "notify::gtk-application-id",
+      () => this._updateWindowConfig(metaWindow),
+      "notify::title",
+      () => this._updateWindowConfig(metaWindow),
+      "notify::appears-focused",
+      () => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
+      "position-changed",
+      () => {
+        // Prevent mutter from leaving artifacts when moving windows quickly
+        // until resize is fully complete.
+        border.queue_redraw();
+      },
+      this,
+    );
 
-		const windowData = {
-			border,
-			actor,
-			config,
-			borderStyleCache: null,
-		};
-		this._windowData.set(metaWindow, windowData);
+    const windowData = {
+      border,
+      actor,
+      config,
+      borderStyleCache: null,
+    };
+    this._windowData.set(metaWindow, windowData);
 
-		this._logWindow(
-			metaWindow,
-			"track",
-			config,
-			`pending: ${this._pending.trackCount()}`,
-		);
+    this._logWindow(
+      metaWindow,
+      "track",
+      config,
+      `pending: ${this._pending.trackCount()}`,
+    );
 
-		// Initial sync
-		this._queueUpdate(metaWindow, windowData);
-	}
+    // Initial sync
+    this._queueUpdate(metaWindow, windowData);
+  }
 
-	_untrackWindow(metaWindow) {
-		// Cancel pending signal tracking
-		this._pending.clearForWindow(metaWindow);
-		const data = this._windowData.get(metaWindow);
-		if (!data) return;
+  _untrackWindow(metaWindow) {
+    // Cancel pending signal tracking
+    this._pending.clearForWindow(metaWindow);
+    const data = this._windowData.get(metaWindow);
+    if (!data) return;
 
-		this._logWindow(metaWindow, "untrack", data.config);
+    this._logWindow(metaWindow, "untrack", data.config);
 
-		const { border, actor } = data;
-		if (isLiveObject(metaWindow)) metaWindow.disconnectObject(this);
-		if (isLiveObject(actor)) actor.disconnectObject(this);
+    const { border, actor } = data;
+    if (isLiveObject(metaWindow)) metaWindow.disconnectObject(this);
+    if (isLiveObject(actor)) actor.disconnectObject(this);
 
-		if (this._isLiveWindowData(data) && border.get_parent?.() === actor) {
-			actor.remove_child(border);
-		}
+    if (this._isLiveWindowData(data) && border.get_parent?.() === actor) {
+      actor.remove_child(border);
+    }
 
-		this._windowData.delete(metaWindow);
-	}
+    this._windowData.delete(metaWindow);
+  }
 
-	_onConfigChanged(changeType) {
-		this._logger.log(`conf changed: ${changeType}`);
-		this._retrackAllWindows();
-	}
+  _onConfigChanged(changeType) {
+    this._logger.log(`conf changed: ${changeType}`);
+    this._retrackAllWindows();
+  }
 
-	_onFocusChanged() {
-		const currentFocus = global.display.focus_window;
-		const lastData = this._lastFocusedWindow
-			? this._windowData.get(this._lastFocusedWindow)
-			: null;
-		const currentData = currentFocus
-			? this._windowData.get(currentFocus)
-			: null;
+  _onFocusChanged() {
+    const currentFocus = global.display.focus_window;
+    const lastData = this._lastFocusedWindow
+      ? this._windowData.get(this._lastFocusedWindow)
+      : null;
+    const currentData = currentFocus
+      ? this._windowData.get(currentFocus)
+      : null;
 
-		const lastValid = lastData && this._isLiveWindowData(lastData);
-		const currentValid =
-			!currentFocus || (currentData && this._isLiveWindowData(currentData));
+    const lastValid = lastData && this._isLiveWindowData(lastData);
+    const currentValid = !currentFocus ||
+      (currentData && this._isLiveWindowData(currentData));
 
-		// If either focused window is invalid, it's either the
-		// first window or something went wrong with tracking,
-		// focus tacking, resync all
-		if (
-			(this._lastFocusedWindow && !lastValid) ||
-			(currentFocus && !currentValid)
-		) {
-			this._resyncAll();
-			this._lastFocusedWindow = currentFocus;
-			return;
-		}
+    // If either focused window is invalid, it's either the
+    // first window or something went wrong with tracking,
+    // focus tacking, resync all
+    if (
+      (this._lastFocusedWindow && !lastValid) ||
+      (currentFocus && !currentValid)
+    ) {
+      this._resyncAll();
+      this._lastFocusedWindow = currentFocus;
+      return;
+    }
 
-		// Sync the previously focused window (if any)
-		this._queueUpdate(this._lastFocusedWindow, lastData);
-		// Sync the newly focused window (if any)
-		this._queueUpdate(currentFocus, currentData);
+    // Sync the previously focused window (if any)
+    this._queueUpdate(this._lastFocusedWindow, lastData);
+    // Sync the newly focused window (if any)
+    this._queueUpdate(currentFocus, currentData);
 
-		// Update last focused window
-		this._lastFocusedWindow = currentFocus;
-	}
+    // Update last focused window
+    this._lastFocusedWindow = currentFocus;
+  }
 
-	_onWindowCreated(metaWindow) {
-		this._tryTrackWindow(metaWindow);
-	}
+  _onWindowCreated(metaWindow) {
+    this._tryTrackWindow(metaWindow);
+  }
 
-	// --- Extension lifecycle -------------------------------------------------
+  // --- Extension lifecycle -------------------------------------------------
 
-	enable() {
-		const display = global.display;
+  enable() {
+    const display = global.display;
 
-		display.connectObject(
-			"window-created",
-			(_display, metaWindow) => this._onWindowCreated(metaWindow),
-			"workareas-changed",
-			() => this._resyncAll(),
-			"notify::focus-window",
-			() => this._onFocusChanged(),
-			this,
-		);
-		Main.layoutManager.connectObject(
-			"monitors-changed",
-			() => this._resyncAll(),
-			this,
-		);
+    display.connectObject(
+      "window-created",
+      (_display, metaWindow) => this._onWindowCreated(metaWindow),
+      "workareas-changed",
+      () => this._resyncAll(),
+      "notify::focus-window",
+      () => this._onFocusChanged(),
+      this,
+    );
+    Main.layoutManager.connectObject(
+      "monitors-changed",
+      () => this._resyncAll(),
+      this,
+    );
 
-		// Attach to existing windows
-		this._trackAllWindows();
-	}
+    // Attach to existing windows
+    this._trackAllWindows();
+  }
 
-	disable() {
-		// Remove config change listener
-		this.configManager.removeConfigChangeListener(this._configChangeCallback);
+  disable() {
+    // Remove config change listener
+    this.configManager.removeConfigChangeListener(this._configChangeCallback);
 
-		// Clean up config manager
-		this.configManager.destroy();
-		this.configManager = null;
-		this._configChangeCallback = null;
-		// Disconnect all extension signals
-		global.display.disconnectObject(this);
-		Main.layoutManager.disconnectObject(this);
+    // Clean up config manager
+    this.configManager.destroy();
+    this.configManager = null;
+    this._configChangeCallback = null;
+    // Disconnect all extension signals
+    global.display.disconnectObject(this);
+    Main.layoutManager.disconnectObject(this);
 
-		this._pending.clearAll();
-		this._untrackAllWindows();
-	}
+    this._pending.clearAll();
+    this._untrackAllWindows();
+  }
 }
 
 function computeBorderState(windowState, config) {
-	const { actorSize, frame, workarea, isFullscreen, maximize, isFocused } =
-		windowState;
-	const EDGE_EPS = 2;
-	const ZERO_RADIUS = { tl: 0, tr: 0, br: 0, bl: 0 };
-	const { margins, radius, width: borderWidth } = config;
-	const radiusEnabled = !!(radius.tl || radius.tr || radius.br || radius.bl);
+  const { actorSize, frame, workarea, isFullscreen, maximize, isFocused } =
+    windowState;
+  const EDGE_EPS = 2;
+  const ZERO_RADIUS = { tl: 0, tr: 0, br: 0, bl: 0 };
+  const { margins, radius, width: borderWidth } = config;
+  const radiusEnabled = !!(radius.tl || radius.tr || radius.br || radius.bl);
 
-	if (
-		isFullscreen ||
-		maximize.full ||
-		(!config.maximizedBorder && maximize.any) ||
-		!borderWidth ||
-		!config.enabled
-	) {
-		return { visible: false };
-	}
+  if (
+    isFullscreen ||
+    maximize.full ||
+    (!config.maximizedBorder && maximize.any) ||
+    !borderWidth ||
+    !config.enabled
+  ) {
+    return { visible: false };
+  }
 
-	const { width, height } = actorSize;
-	if (width <= 0 || height <= 0) {
-		return { visible: false };
-	}
+  const { width, height } = actorSize;
+  if (width <= 0 || height <= 0) {
+    return { visible: false };
+  }
 
-	const edgeThreshold = Math.max(EDGE_EPS, borderWidth);
-	const edges = {
-		left: Math.abs(frame.x - workarea.x) <= edgeThreshold,
-		right:
-			Math.abs(frame.x + frame.width - (workarea.x + workarea.width)) <=
-			edgeThreshold,
-		top: Math.abs(frame.y - workarea.y) <= edgeThreshold,
-		bottom:
-			Math.abs(frame.y + frame.height - (workarea.y + workarea.height)) <=
-			edgeThreshold,
-	};
+  const edgeThreshold = Math.max(EDGE_EPS, borderWidth);
+  const edges = {
+    left: Math.abs(frame.x - workarea.x) <= edgeThreshold,
+    right: Math.abs(frame.x + frame.width - (workarea.x + workarea.width)) <=
+      edgeThreshold,
+    top: Math.abs(frame.y - workarea.y) <= edgeThreshold,
+    bottom: Math.abs(frame.y + frame.height - (workarea.y + workarea.height)) <=
+      edgeThreshold,
+  };
 
-	const borderWidths = {
-		top: edges.top ? 0 : borderWidth,
-		right: edges.right ? 0 : borderWidth,
-		bottom: edges.bottom ? 0 : borderWidth,
-		left: edges.left ? 0 : borderWidth,
-	};
+  const borderWidths = {
+    top: edges.top ? 0 : borderWidth,
+    right: edges.right ? 0 : borderWidth,
+    bottom: edges.bottom ? 0 : borderWidth,
+    left: edges.left ? 0 : borderWidth,
+  };
 
-	const effRadius =
-		!radiusEnabled || maximize.any
-			? ZERO_RADIUS
-			: {
-					tl: edges.top && edges.left ? 0 : radius.tl,
-					tr: edges.top && edges.right ? 0 : radius.tr,
-					br: edges.bottom && edges.right ? 0 : radius.br,
-					bl: edges.bottom && edges.left ? 0 : radius.bl,
-				};
+  const effRadius = !radiusEnabled || maximize.any ? ZERO_RADIUS : {
+    tl: edges.top && edges.left ? 0 : radius.tl,
+    tr: edges.top && edges.right ? 0 : radius.tr,
+    br: edges.bottom && edges.right ? 0 : radius.br,
+    bl: edges.bottom && edges.left ? 0 : radius.bl,
+  };
 
-	const pos = {
-		x: -margins.left - borderWidths.left,
-		y: -margins.top - borderWidths.top,
-	};
+  const pos = {
+    x: -margins.left - borderWidths.left,
+    y: -margins.top - borderWidths.top,
+  };
 
-	const size = {
-		width: Math.max(
-			1,
-			width +
-				margins.left +
-				margins.right +
-				borderWidths.left +
-				borderWidths.right,
-		),
-		height: Math.max(
-			1,
-			height +
-				margins.top +
-				margins.bottom +
-				borderWidths.top +
-				borderWidths.bottom,
-		),
-	};
+  const size = {
+    width: Math.max(
+      1,
+      width +
+        margins.left +
+        margins.right +
+        borderWidths.left +
+        borderWidths.right,
+    ),
+    height: Math.max(
+      1,
+      height +
+        margins.top +
+        margins.bottom +
+        borderWidths.top +
+        borderWidths.bottom,
+    ),
+  };
 
-	return {
-		visible: true,
-		borderWidths,
-		borderColor: isFocused ? config.activeColor : config.inactiveColor,
-		radius: effRadius,
-		pos,
-		size,
-	};
+  return {
+    visible: true,
+    borderWidths,
+    borderColor: isFocused ? config.activeColor : config.inactiveColor,
+    radius: effRadius,
+    pos,
+    size,
+  };
 }

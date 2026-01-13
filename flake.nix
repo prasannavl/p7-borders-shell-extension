@@ -9,10 +9,7 @@
     self,
     nixpkgs,
   }: let
-    systems = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    systems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
     pkgsFor = system: import nixpkgs {inherit system;};
     commonPackagesFor = pkgs:
@@ -23,11 +20,16 @@
         unzip
         zip
       ];
+    formatterPkgsFor = pkgs:
+      with pkgs; [
+        treefmt
+        alejandra
+        biome
+        deno
+      ];
     metadata = builtins.fromJSON (builtins.readFile ./metadata.json);
     uuid = metadata.uuid;
   in {
-    formatter = forAllSystems (system: (pkgsFor system).alejandra);
-
     packages = forAllSystems (
       system: let
         pkgs = pkgsFor system;
@@ -58,15 +60,25 @@
       }
     );
 
-    devShells = forAllSystems (
-      system: let
-        pkgs = pkgsFor system;
-        commonPackages = commonPackagesFor pkgs;
-      in {
-        default = pkgs.mkShell {
-          packages = commonPackages ++ [pkgs.biome];
-        };
-      }
-    );
+    formatter = forAllSystems (system: let
+      pkgs = pkgsFor system;
+      formatterPkgs = formatterPkgsFor pkgs;
+    in
+      pkgs.writeShellApplication {
+        name = "treefmt";
+        runtimeInputs = formatterPkgs;
+        text = "treefmt";
+      });
+
+    devShells = forAllSystems (system: let
+      pkgs = pkgsFor system;
+      commonPackages = commonPackagesFor pkgs;
+      formatterPkgs = formatterPkgsFor pkgs;
+    in {
+      default = pkgs.mkShell {
+        packages = commonPackages ++ formatterPkgs;
+      };
+    });
   };
 }
+

@@ -6,8 +6,9 @@ efficiently with cached inline styles.
 
 - Compatibility: GNOME Shell 48+.
 - Best effort compatibility: GNOME Shell 45+.
-- Extension Store: https://extensions.gnome.org/extension/9064/p7-window-borders/
-- Project is also a Nix flake for direct install on NixOS. 
+- Extension Store:
+  https://extensions.gnome.org/extension/9064/p7-window-borders/
+- Project is also a Nix flake for direct install on NixOS.
 
 ## Features
 
@@ -153,27 +154,31 @@ follow known toolkit standards. This for example is applied for `@gtkPreset`,
 
 ### Why are my Chrome (or Chromium, Chrome Apps) borders off?
 
-The current default preset works with Chrome's native and Qt mode. If you use Gtk, then the border preset needs switching to `chromeGtkPreset` for both chrome and chrome apps. Chrome adds it's own borders and doesn't have consistent borders across all 3 modes.
+The current default preset works with Chrome's native and Qt mode. If you use
+Gtk, then the border preset needs switching to `chromeGtkPreset` for both chrome
+and chrome apps. Chrome adds it's own borders and doesn't have consistent
+borders across all 3 modes.
 
-The json config: 
+The json config:
 
 ```
-  # default 
-  "regex.class:^google-chrome*": "@chromePreset",
-  "regex.class:^chrome-*": "@chromePreset",
-  "regex.class:^chromeium*": "@chromePreset",
+# default 
+"regex.class:^google-chrome*": "@chromePreset",
+"regex.class:^chrome-*": "@chromePreset",
+"regex.class:^chromeium*": "@chromePreset",
 ```
 
 Switch to:
 
 ```
-  # default 
-  "regex.class:^google-chrome*": "@chromeGtkPreset",
-  "regex.class:^chrome-*": "@chromeGtkPreset",
-  "regex.class:^chromium*": "@chromeGtkPreset",
+# default 
+"regex.class:^google-chrome*": "@chromeGtkPreset",
+"regex.class:^chrome-*": "@chromeGtkPreset",
+"regex.class:^chromium*": "@chromeGtkPreset",
 ```
 
-The preset is already provided. Simply use the extension preferences to switch preset for the above. 
+The preset is already provided. Simply use the extension preferences to switch
+preset for the above.
 
 ### How do I reset all settings?
 
@@ -182,4 +187,6 @@ You can reset all settings to their default values using the `dconf` command:
 ```bash
 dconf reset -f /org/gnome/shell/extensions/p7-borders/
 ```
-Disable and enable the extension and it will auto populate defaults into dconf again.
+
+Disable and enable the extension and it will auto populate defaults into dconf
+again.
