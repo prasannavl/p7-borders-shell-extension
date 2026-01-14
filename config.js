@@ -38,30 +38,26 @@ export class ConfigManager {
 
   _init() {
     // Load boolean settings
-    this.radiusEnabled = this._settings.get_boolean("radius-enabled");
-    this.modalEnabled = this._settings.get_boolean("modal-enabled");
-    this.verboseLogging = this._settings.get_boolean("verbose-logging");
+    const radiusEnabled = this._settings.get_boolean("radius-enabled");
+    const modalEnabled = this._settings.get_boolean("modal-enabled");
+    const verboseLogging = this._settings.get_boolean("verbose-logging");
     const globalConfig = {
-      radiusEnabled: this.radiusEnabled,
-      modalEnabled: this.modalEnabled,
-      verboseLogging: this.verboseLogging,
+      radiusEnabled,
+      modalEnabled,
+      verboseLogging,
     };
     this.globalConfig = globalConfig;
 
     // Update default config from the current settings
-    this.defaults.activeColor = this._getDefaultActiveOrAccentColor();
-    this.defaults.inactiveColor = this._settings.get_string(
-      "default-inactive-color",
-    );
-    this.defaults.width = this._settings.get_int("default-width");
-    this.defaults.margins = this._settings.get_int("default-margins");
-    this.defaults.radius = this._settings.get_int("default-radius");
-    this.defaults.enabled = this._settings.get_boolean(
-      "default-enabled",
-    );
-    this.defaults.maximizedBorder = this._settings.get_boolean(
-      "default-maximized-borders",
-    );
+    const defaults = {
+      activeColor: this._getDefaultActiveOrAccentColor(),
+      inactiveColor: this._settings.get_string("default-inactive-color"),
+      width: this._settings.get_int("default-width"),
+      margins: this._settings.get_int("default-margins"),
+      radius: this._settings.get_int("default-radius"),
+      enabled: this._settings.get_boolean("default-enabled"),
+      maximizedBorder: this._settings.get_boolean("default-maximized-borders"),
+    };
 
     // Load app configs from gsettings
     const savedConfigs = this._settings.get_string("app-configs");
@@ -83,9 +79,9 @@ export class ConfigManager {
     this.appConfigs = {};
 
     // Create default config
-    const defaultConfig = this.normalizeConfig(
+    const defaultConfig = this.defaults = this.normalizeConfig(
       {
-        ...this.defaults,
+        ...defaults,
       },
       globalConfig,
     );
@@ -375,8 +371,7 @@ export class ConfigManager {
 
     // Try pattern matches
     for (const [key, config] of Object.entries(this.appConfigs)) {
-      if (key === "@default" || !key.startsWith("regex.")) continue;
-
+      if (!key.startsWith("regex.")) continue;
       if (
         key.startsWith("regex.app:") &&
         appId &&
@@ -392,8 +387,7 @@ export class ConfigManager {
         return config;
       }
     }
-
-    return this.appConfigs["@default"];
+    return this.defaults;
   }
 
   _matches(text, pattern) {
