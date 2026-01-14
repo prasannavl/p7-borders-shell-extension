@@ -139,7 +139,7 @@ export class ConfigManager {
       },
       "@zedPreset": {
         margins: { right: -1, bottom: -1 },
-        radius: { tl: 14, tr: 14, br: 10, bl: 10 }
+        radius: { tl: 14, tr: 14, br: 10, bl: 10 },
       },
       // Adw
       "regex.class:^org.gnome.*": "@adwPreset",
@@ -200,8 +200,8 @@ export class ConfigManager {
         maximizedBorder: true,
       },
       "class:gnome-disks": {
-        radius: { tl: 10, tr: 10, br: 11, bl: 11 }
-      }
+        radius: { tl: 10, tr: 10, br: 11, bl: 11 },
+      },
     };
   }
 
