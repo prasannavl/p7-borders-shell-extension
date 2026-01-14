@@ -286,7 +286,6 @@ export class BorderManager {
     data.config = config;
 
     this._invalidateAndUpdate(metaWindow, data);
-
     this._logWindow(metaWindow, "config updated", config);
   }
 
@@ -471,8 +470,16 @@ export class BorderManager {
 }
 
 function computeBorderState(windowState, config) {
-  const { actorSize, frame, workarea, isFullscreen, maximize, isFocused } =
-    windowState;
+  const {
+    box,
+    frame,
+    buffer,
+    scale,
+    workarea,
+    isFullscreen,
+    maximize,
+    isFocused,
+  } = windowState;
   const EDGE_EPS = 2;
   const ZERO_RADIUS = { tl: 0, tr: 0, br: 0, bl: 0 };
   const { margins, radius, width: borderWidth } = config;
@@ -488,7 +495,23 @@ function computeBorderState(windowState, config) {
     return { visible: false };
   }
 
-  const { width, height } = actorSize;
+  // We calculate the effective frame so that any additional shadows
+  // that's drawn by the actors aren't counted for the border.
+  const effectiveFrame = buffer
+    ? {
+      x: frame.x - buffer.x,
+      y: frame.y - buffer.y,
+      width: frame.width,
+      height: frame.height,
+    }
+    : {
+      x: 0,
+      y: 0,
+      width: box.width,
+      height: box.height,
+    };
+
+  const { width, height } = effectiveFrame;
   if (width <= 0 || height <= 0) {
     return { visible: false };
   }
@@ -518,8 +541,8 @@ function computeBorderState(windowState, config) {
   };
 
   const pos = {
-    x: -margins.left - borderWidths.left,
-    y: -margins.top - borderWidths.top,
+    x: effectiveFrame.x - margins.left - borderWidths.left,
+    y: effectiveFrame.y - margins.top - borderWidths.top,
   };
 
   const size = {

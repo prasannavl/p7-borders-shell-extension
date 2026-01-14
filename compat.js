@@ -32,12 +32,15 @@ export function getWindowState(metaWindow, actor) {
   const height = box.y2 - box.y1;
 
   const frame = metaWindow.get_frame_rect();
+  const buffer = metaWindow.get_buffer_rect?.() ?? frame;
+
   const workarea = metaWindow.get_work_area_current_monitor();
   const maximize = getMaximizeState(metaWindow);
 
   return {
-    actorSize: { width, height },
+    box: { width, height },
     frame,
+    buffer,
     workarea,
     maximize,
     isFullscreen: !!metaWindow.fullscreen,

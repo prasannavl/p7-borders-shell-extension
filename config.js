@@ -122,32 +122,25 @@ export class ConfigManager {
       // Presets
       "@zeroPreset": { maximizedBorder: true },
       "@zeroNoMaxPreset": { maximizedBorder: false },
-      "@electronPreset": { maximizedBorder: true },
       "@adwPreset": {
-        margins: -25,
         radius: 18,
       },
       "@gtkPreset": {
-        margins: { top: -22, right: -25, bottom: -28, left: -25 },
         radius: { tl: 10, tr: 10, br: 0, bl: 0 },
       },
       "@qtPreset": {
-        margins: { top: -25, right: -25, bottom: -24, left: -25 },
         radius: { tl: 18, tr: 18, br: 0, bl: 0 },
       },
       "@chromePreset": {
-        margins: { top: -10, right: -16, bottom: -32, left: -16 },
         radius: { tl: 12, tr: 12, br: 0, bl: 0 },
       },
       "@chromeGtkPreset": {
-        margins: { top: -10, right: -11, bottom: -14, left: -11 },
         radius: { tl: 10, tr: 10, br: 0, bl: 0 },
       },
       "@zedPreset": {
-        margins: { top: -10, right: -11, bottom: -11, left: -10 },
-        radius: 14,
+        margins: { right: -1, bottom: -1 },
+        radius: { tl: 14, tr: 14, br: 10, bl: 10 }
       },
-      "@footPreset": { margins: { top: 27 }, maximizedBorder: true },
       // Adw
       "regex.class:^org.gnome.*": "@adwPreset",
       // "regex.class:^org.freedesktop.*": "@adwPreset",
@@ -185,13 +178,13 @@ export class ConfigManager {
       // Chromium
       "regex.class:^chromium*": "@chromePreset",
       // Electron
-      "class:obsidian": "@electronPreset",
-      "class:zulip": "@electronPreset",
-      "class:slack": "@electronPreset",
-      "class:code": "@electronPreset",
-      "class:antigravity": "@electronPreset",
-      "class:spotify": "@electronPreset",
-      "class:discord": "@electronPreset",
+      "class:obsidian": "@zeroPreset",
+      "class:zulip": "@zeroPreset",
+      "class:slack": "@zeroPreset",
+      "class:code": "@zeroPreset",
+      "class:antigravity": "@zeroPreset",
+      "class:spotify": "@zeroPreset",
+      "class:discord": "@zeroPreset",
       // Qt
       "class:vlc": "@qtPreset",
       "class:krita": "@qtPreset",
@@ -200,20 +193,22 @@ export class ConfigManager {
       "class:dev.zed.Zed": "@zedPreset",
       "class:mpv": "@zeroPreset",
       // Custom
-      "class:foot": "@footPreset",
-      "class:footclient": "@footPreset",
+      "class:foot": "@zeroPreset",
+      "class:footclient": "@zeroPreset",
       "class:Alacritty": {
-        margins: { top: 35 },
         radius: { tl: 12, tr: 12 },
         maximizedBorder: true,
       },
+      "class:gnome-disks": {
+        radius: { tl: 10, tr: 10, br: 11, bl: 11 }
+      }
     };
   }
 
   _ensureDefaultsSaved() {
     // Check if this is the first run by looking at config-version
     const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 4;
+    const currentRevision = 5;
 
     if (configVersion < currentRevision) {
       // First run - save all default values to make them visible in dconf-editor

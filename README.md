@@ -150,7 +150,7 @@ border.
 By opt-in, we workaround these misaligned insets and lets us tune per-app
 margins and radii where they make sense. There are common presets where apps
 follow known toolkit standards. This for example is applied for `@gtkPreset`,
-`@adwPreset`, `@electronPreset` etc.
+`@adwPreset`, etc.
 
 ### Why are my Chrome (or Chromium, Chrome Apps) borders off?
 

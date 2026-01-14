@@ -2,6 +2,13 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [30] - 2025-01-14
+
+- Automatic detection logic to handle default borders.
+- Margins are simpler with effective compositor area
+  calc using both `frame_rect` and `buffer_rect` to take into
+  account non frame area like shadows.
+
 ## [27] - 2025-01-11
 
 - Regression fix: Re-enable borders due to improper actors check.
