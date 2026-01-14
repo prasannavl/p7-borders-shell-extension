@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [31] - 2025-01-15
+
+- Simplify defaults
+
 ## [30] - 2025-01-14
 
 - Automatic detection logic to handle default borders.

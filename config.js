@@ -29,8 +29,8 @@ export class ConfigManager {
       this,
     );
 
-    // Initialize config from gsettings or set defaults
-    this.appConfigFallback = {};
+    // Initialize defaults from gsettings
+    this.defaults = {};
     this._init();
     // Check for first run and save defaults if needed (after defaults are loaded)
     this._ensureDefaultsSaved();
@@ -48,18 +48,18 @@ export class ConfigManager {
     };
     this.globalConfig = globalConfig;
 
-    // Update fallback config from all current settings
-    this.appConfigFallback.activeColor = this._getAccentColor();
-    this.appConfigFallback.inactiveColor = this._settings.get_string(
+    // Update default config from the current settings
+    this.defaults.activeColor = this._getDefaultActiveOrAccentColor();
+    this.defaults.inactiveColor = this._settings.get_string(
       "default-inactive-color",
     );
-    this.appConfigFallback.width = this._settings.get_int("default-width");
-    this.appConfigFallback.margins = this._settings.get_int("default-margins");
-    this.appConfigFallback.radius = this._settings.get_int("default-radius");
-    this.appConfigFallback.enabled = this._settings.get_boolean(
+    this.defaults.width = this._settings.get_int("default-width");
+    this.defaults.margins = this._settings.get_int("default-margins");
+    this.defaults.radius = this._settings.get_int("default-radius");
+    this.defaults.enabled = this._settings.get_boolean(
       "default-enabled",
     );
-    this.appConfigFallback.maximizedBorder = this._settings.get_boolean(
+    this.defaults.maximizedBorder = this._settings.get_boolean(
       "default-maximized-borders",
     );
 
@@ -82,18 +82,15 @@ export class ConfigManager {
     const resolvedConfigs = this._resolvePresets(this._savedAppConfigs);
     this.appConfigs = {};
 
-    // Create @default config by merging with fallback
-    const defaultRawConfig = this._savedAppConfigs["@default"] || {};
+    // Create default config
     const defaultConfig = this.normalizeConfig(
       {
-        ...this.appConfigFallback,
-        ...defaultRawConfig,
+        ...this.defaults,
       },
       globalConfig,
     );
-    this.appConfigs["@default"] = defaultConfig;
 
-    // Normalize all other configs using @default as base
+    // Normalize all other configs using default as base
     for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
       if (!key.startsWith("@")) {
         const normalized = this.normalizeConfig(
@@ -118,7 +115,6 @@ export class ConfigManager {
     // on first run, and then gsettings should be the single
     // source of truth.
     return {
-      "@default": { width: 3 },
       // Presets
       "@zeroPreset": { maximizedBorder: true },
       "@zeroNoMaxPreset": { maximizedBorder: false },
@@ -208,7 +204,7 @@ export class ConfigManager {
   _ensureDefaultsSaved() {
     // Check if this is the first run by looking at config-version
     const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 5;
+    const currentRevision = 6;
 
     if (configVersion < currentRevision) {
       // First run - save all default values to make them visible in dconf-editor
@@ -249,7 +245,7 @@ export class ConfigManager {
     }
   }
 
-  _getAccentColor() {
+  _getDefaultActiveOrAccentColor() {
     // Custom color that works well for all dark and light themes
     const defaultAccent = "rgba(51, 153, 230, 0.4)";
 

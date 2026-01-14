@@ -296,25 +296,28 @@ function buildGlobalPage(settings) {
   });
 
   const behaviorGroup = new Adw.PreferencesGroup({ title: "Behavior" });
-  const radiusEnabledRow = new Adw.SwitchRow({
-    title: "Enable rounded corners",
-    subtitle: "Toggle border radius rendering",
-  });
   const defaultEnabledRow = new Adw.SwitchRow({
-    title: "Enable borders by default",
+    title: "Enable by default",
+    subtitle: "Enable borders on all windows without opt-in config",
+  });
+  const radiusEnabledRow = new Adw.SwitchRow({
+    title: "Rounded corners",
+    subtitle: "Toggle border radius rendering on or off",
   });
   const maximizedBordersRow = new Adw.SwitchRow({
-    title: "Show borders on maximized windows",
+    title: "Smart maximize",
+    subtitle: "Enable smart borders on partially maximized windows",
   });
   const modalEnabledRow = new Adw.SwitchRow({
     title: "Enable borders on modal/dialog windows",
+    subtitle: "Borders are enabled only on top-level windows without this",
   });
   const verboseLoggingRow = new Adw.SwitchRow({
-    title: "Enable verbose logging",
+    title: "Verbose logging",
     subtitle: "Log detailed track/untrack events for debugging",
   });
-  behaviorGroup.add(radiusEnabledRow);
   behaviorGroup.add(defaultEnabledRow);
+  behaviorGroup.add(radiusEnabledRow);
   behaviorGroup.add(maximizedBordersRow);
   behaviorGroup.add(modalEnabledRow);
   behaviorGroup.add(verboseLoggingRow);
