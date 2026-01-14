@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [32] - 2025-01-15
+
+- Regression fix: Progagate defaults correctly on unknown windows.
+
 ## [31] - 2025-01-15
 
 - Simplify defaults
