@@ -2,6 +2,11 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [33] - 2025-01-15
+
+- Enable by default: `default-maximized-borders` and `modal-enabled`
+- Simplify handling for config settings migration and defaults.
+
 ## [32] - 2025-01-15
 
 - Regression fix: Progagate defaults correctly on unknown windows.

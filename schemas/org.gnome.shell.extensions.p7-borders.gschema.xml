@@ -16,13 +16,13 @@
     </key>
     
     <key name="default-maximized-borders" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Default maximized borders setting</summary>
       <description>Default setting for whether borders should be shown on maximized windows</description>
     </key>
 
     <key name="modal-enabled" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Enable borders on modal/dialog windows</summary>
       <description>Allow borders for transient or attached dialog windows</description>
     </key>
@@ -33,7 +33,7 @@
       <description>Log detailed tracking events for debugging</description>
     </key>
     
-    <!-- Default fallback configuration -->
+    <!-- Default app config -->
     <key name="default-margins" type="i">
       <default>0</default>
       <summary>Default margins</summary>

@@ -31,13 +31,16 @@ export class ConfigManager {
 
     // Initialize defaults from gsettings
     this.defaults = {};
+
+    // Check for first run / schema migration and save defaults
+    // when needed
+    this._ensureDefaults();
     this._init();
-    // Check for first run and save defaults if needed (after defaults are loaded)
-    this._ensureDefaultsSaved();
   }
 
   _init() {
-    // Load boolean settings
+    // Get the pure global configs into globalConfig. The rest that
+    // go into each app config is pulled directly by defauls below.
     const radiusEnabled = this._settings.get_boolean("radius-enabled");
     const modalEnabled = this._settings.get_boolean("modal-enabled");
     const verboseLogging = this._settings.get_boolean("verbose-logging");
@@ -59,30 +62,32 @@ export class ConfigManager {
       maximizedBorder: this._settings.get_boolean("default-maximized-borders"),
     };
 
-    // Load app configs from gsettings
+    // Load app configs and falling back to fallback config
+    // if it's invalid json
     const savedConfigs = this._settings.get_string("app-configs");
-    this._savedAppConfigs = {};
-    if (savedConfigs && savedConfigs !== "{}") {
+    let parsedConfig = null;
+    if (savedConfigs && savedConfigs.length > 0) {
       try {
-        this._savedAppConfigs = JSON.parse(savedConfigs);
+        const c = JSON.parse(savedConfigs);
+        if (c && typeof c === "object") {
+          parsedConfig = c;
+        } else {
+          this._logger.warn("invalid app configs, falling back to default");
+        }
       } catch (error) {
-        this._logger.warn("Failed to parse saved app configs:", error);
-        this._savedAppConfigs = this._fallbackAppConfig();
+        this._logger.warn("app config parse err, falling back to default");
       }
     }
-    if (!this._savedAppConfigs || typeof this._savedAppConfigs !== "object") {
-      this._savedAppConfigs = {};
-    }
+
+    parsedConfig = parsedConfig ?? this._fallbackAppConfig();
 
     // Build normalized app configs
-    const resolvedConfigs = this._resolvePresets(this._savedAppConfigs);
+    const resolvedConfigs = this._resolvePresets(parsedConfig);
     this.appConfigs = {};
 
     // Create default config
     const defaultConfig = this.defaults = this.normalizeConfig(
-      {
-        ...defaults,
-      },
+      defaults,
       globalConfig,
     );
 
@@ -92,6 +97,7 @@ export class ConfigManager {
         const normalized = this.normalizeConfig(
           {
             ...defaultConfig,
+            // If an app config is specified, it's now whitelisted
             ...{ enabled: true },
             ...rawConfig,
           },
@@ -189,7 +195,6 @@ export class ConfigManager {
       "class:footclient": "@zeroPreset",
       "class:Alacritty": {
         radius: { tl: 12, tr: 12 },
-        maximizedBorder: true,
       },
       "class:gnome-disks": {
         radius: { tl: 10, tr: 10, br: 11, bl: 11 },
@@ -197,38 +202,23 @@ export class ConfigManager {
     };
   }
 
-  _ensureDefaultsSaved() {
+  _ensureDefaults() {
     // Check if this is the first run by looking at config-version
     const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 6;
+    const currentRevision = 7;
 
     if (configVersion < currentRevision) {
-      // First run - save all default values to make them visible in dconf-editor
       this._logger.log(
-        "First run detected, saving default configuration values",
+        "Config reset needed, saving default configuration values",
       );
 
-      const boolKeys = [
-        "radius-enabled",
-        "default-maximized-borders",
-        "default-enabled",
-        "modal-enabled",
-        "verbose-logging",
-      ];
-      for (const key of boolKeys) {
-        this._settings.set_boolean(key, this._settings.get_boolean(key));
+      // Reset all keys to schema defaults.
+      const keys = this._settings.settings_schema.list_keys();
+      for (const key of keys) {
+        this._settings.reset(key);
       }
-
-      const intKeys = ["default-margins", "default-radius", "default-width"];
-      for (const key of intKeys) {
-        this._settings.set_int(key, this._settings.get_int(key));
-      }
-
-      const stringKeys = ["default-active-color", "default-inactive-color"];
-      for (const key of stringKeys) {
-        this._settings.set_string(key, this._settings.get_string(key));
-      }
-
+      // app-configs, we need it to be prepopulated for
+      // easy editing.
       this._settings.set_string(
         "app-configs",
         JSON.stringify(this._fallbackAppConfig()),
@@ -304,15 +294,6 @@ export class ConfigManager {
    */
   removeConfigChangeListener(callback) {
     this._configChangeCallbacks.delete(callback);
-  }
-
-  /**
-   * Save app configurations to gsettings
-   * @param {Object} configs - The app configurations to save
-   */
-  saveAppConfigs(configs) {
-    this._settings.set_string("app-configs", JSON.stringify(configs));
-    this._init();
   }
 
   /**
