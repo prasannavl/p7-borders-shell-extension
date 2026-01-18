@@ -30,7 +30,7 @@ efficiently with cached inline styles in the compositor.
 </p>
 
 <p align="center">
-  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" style="width:100%; max-width:640px; height:auto;"/>
+  <img src="docs/assets/screencast-edge.gif" alt="Borders reacting to edge-aware logic" style="width:100%; max-width:640px; height:auto;"/>
   <br/>
   Edge-aware smart borders so it doesn't cause bleed effect in multi-monitors
 </p>
