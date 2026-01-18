@@ -1,8 +1,8 @@
-# P7 Borders (GNOME Shell extension)
+# p7 Borders
 
 Add per-window borders in GNOME Shell with per-side margins, per-corner radii,
-and edge-aware hiding. Borders are attached to each window actor and updated
-efficiently with cached inline styles.
+and edge-aware hiding. Makes mutter attach borders to each window actor
+efficiently with cached inline styles in the compositor.
 
 - Compatibility: GNOME Shell 48+.
 - Best effort compatibility: GNOME Shell 45+.
@@ -12,7 +12,8 @@ efficiently with cached inline styles.
 
 ## Features
 
-- Per-window border as a child of `Meta.WindowActor` drawn efficiently in mutter with all the work done in compositor during the compositing phase.
+- Per-window border as a child of `Meta.WindowActor` drawn efficiently in mutter
+  with all the work done in compositor during the compositing phase.
 - Inner/outer margins, per-side margins, per-corner radius
 - Edge-aware hiding (borders drop where windows touch workarea edges)
 - Per-app configuration via `gtk-application-id` or `WM_CLASS`
@@ -23,25 +24,25 @@ efficiently with cached inline styles.
 ## Screencasts
 
 <p align="center">
-  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" width="350"/>
+  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" style="width:100%; max-width:640px; height:auto;"/>
   <br/>
   Comparison with default GNOME
 </p>
 
 <p align="center">
-  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" width="350"/>
+  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" style="width:100%; max-width:640px; height:auto;"/>
   <br/>
-  Edge-aware smart borders so it doesn't cause bleed effect in multi-monitors 
+  Edge-aware smart borders so it doesn't cause bleed effect in multi-monitors
 </p>
 
 <p align="center">
-  <img src="docs/assets/screencast-move.gif" alt="Window move updating borders" width="350"/>
+  <img src="docs/assets/screencast-move.gif" alt="Window move updating borders" style="width:100%; max-width:640px; height:auto;"/>
   <br/>
   Efficiently layered to the windows, natural moves.
 </p>
 
 <p align="center">
-  <img src="docs/assets/screencast-resize.gif" alt="Window resize showing live updates" width="350"/>
+  <img src="docs/assets/screencast-resize.gif" alt="Window resize showing live updates" style="width:100%; max-width:640px; height:auto;"/>
   <br/>
   Natural resizes, letting the compositor do all the work
 </p>
