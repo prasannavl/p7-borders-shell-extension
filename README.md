@@ -12,14 +12,39 @@ efficiently with cached inline styles.
 
 ## Features
 
-- Per-window border as a child of `Meta.WindowActor` drawn as efficiently as
-  possible in mutter.
+- Per-window border as a child of `Meta.WindowActor` drawn efficiently in mutter with all the work done in compositor during the compositing phase.
 - Inner/outer margins, per-side margins, per-corner radius
 - Edge-aware hiding (borders drop where windows touch workarea edges)
 - Per-app configuration via `gtk-application-id` or `WM_CLASS`
 - Style updates are cached to avoid redundant `set_style()` calls
 - Uses accent colors by default.
 - Works with a whitelist. See [FAQ](#faq).
+
+## Screencasts
+
+<p align="center">
+  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" width="350"/>
+  <br/>
+  Comparison with default GNOME
+</p>
+
+<p align="center">
+  <img src="docs/assets/screencast-borders.gif" alt="Borders reacting to edge-aware logic" width="350"/>
+  <br/>
+  Edge-aware smart borders so it doesn't cause bleed effect in multi-monitors 
+</p>
+
+<p align="center">
+  <img src="docs/assets/screencast-move.gif" alt="Window move updating borders" width="350"/>
+  <br/>
+  Efficiently layered to the windows, natural moves.
+</p>
+
+<p align="center">
+  <img src="docs/assets/screencast-resize.gif" alt="Window resize showing live updates" width="350"/>
+  <br/>
+  Natural resizes, letting the compositor do all the work
+</p>
 
 ## Screenshots
 
@@ -46,8 +71,10 @@ efficiently with cached inline styles.
 For a local install:
 
 ```sh
-make install
-make enable
+nix develop
+make ginstall
+
+Log out, login again and enable.
 ```
 
 ## Configuration
@@ -104,10 +131,12 @@ Example `app-configs` JSON:
 
 Useful Make targets:
 
-- `make lint` - run Biome on `*.js`
+- `make lint` - run linters
+- `make fmt` - run formatters
 - `make schemas` - compile GSettings schema
 - `make pack` - build zip into `dist/`
-- `make install` - build and install
+- `make ginstall` - build and install using `gnome-extensions`
+- `make install` - Manually install into `DESTDIR` dir
 - `make enable` / `make disable` / `make reload`
 - `make clean`
 
