@@ -24,6 +24,105 @@ const isLiveObject = (object) => {
   }
 };
 
+class PendingTracker {
+  constructor(manager) {
+    this._manager = manager;
+    this.tracks = new Map();
+    this.syncs = new Map();
+  }
+
+  isTracked(metaWindow) {
+    return this.tracks.has(metaWindow);
+  }
+
+  _track(metaWindow, entries) {
+    const token = {};
+    const objects = [];
+    for (const { object, signal, handler } of entries) {
+      object.connectObject(signal, handler, token);
+      objects.push(object);
+    }
+    this.tracks.set(metaWindow, { objects, token });
+  }
+
+  addTrack(metaWindow, entries) {
+    if (this.isTracked(metaWindow)) return true;
+    this._track(metaWindow, [
+      ...entries,
+      {
+        object: metaWindow,
+        signal: "unmanaged",
+        handler: () => this.clearTrack(metaWindow),
+      },
+    ]);
+    return true;
+  }
+
+  clearTrack(metaWindow) {
+    const pending = this.tracks.get(metaWindow);
+    if (!pending) return;
+    const { objects, token } = pending;
+    for (const object of objects) {
+      if (isLiveObject(object)) object.disconnectObject(token);
+    }
+    this.tracks.delete(metaWindow);
+  }
+
+  clearAllTracks() {
+    for (const [_win, pending] of this.tracks.entries()) {
+      const { objects, token } = pending;
+      for (const object of objects) {
+        if (isLiveObject(object)) object.disconnectObject(token);
+      }
+    }
+    this.tracks.clear();
+  }
+
+  addSync(metaWindow) {
+    this.clearSync(metaWindow);
+    const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+      this.syncs.delete(metaWindow);
+      const latestData = this._manager._windowData.get(metaWindow);
+      if (
+        isLiveObject(metaWindow) &&
+        this._manager.isLiveWindowData(latestData)
+      ) {
+        this._manager.syncBorder(metaWindow, latestData);
+      }
+      return GLib.SOURCE_REMOVE;
+    });
+    this.syncs.set(metaWindow, idleId);
+  }
+
+  clearSync(metaWindow) {
+    const pendingSyncId = this.syncs.get(metaWindow);
+    if (!pendingSyncId) return;
+    GLib.Source.remove(pendingSyncId);
+    this.syncs.delete(metaWindow);
+  }
+
+  clearAllSyncs() {
+    for (const [_win, syncId] of this.syncs.entries()) {
+      GLib.Source.remove(syncId);
+    }
+    this.syncs.clear();
+  }
+
+  clearForWindow(metaWindow) {
+    this.clearTrack(metaWindow);
+    this.clearSync(metaWindow);
+  }
+
+  clearAll() {
+    this.clearAllSyncs();
+    this.clearAllTracks();
+  }
+
+  trackCount() {
+    return this.tracks.size;
+  }
+}
+
 export class BorderManager {
   constructor(logger, settings) {
     this._logger = logger;
@@ -43,82 +142,7 @@ export class BorderManager {
     // and when we actually track a window fully (which happens
     // only after the actor has been allocated).
     // It additionally also takes care of sync queues.
-    this._pending = {
-      tracks: new Map(),
-      syncs: new Map(),
-      hasTrack: (metaWindow) => this._pending.tracks.has(metaWindow),
-      _track: (metaWindow, entries) => {
-        const token = {};
-        const objects = [];
-        for (const { object, signal, handler } of entries) {
-          object.connectObject(signal, handler, token);
-          objects.push(object);
-        }
-        this._pending.tracks.set(metaWindow, { objects, token });
-      },
-      addTrack: (metaWindow, entries) => {
-        if (this._pending.hasTrack(metaWindow)) return true;
-        this._pending._track(metaWindow, [
-          ...entries,
-          {
-            object: metaWindow,
-            signal: "unmanaged",
-            handler: () => this._pending.clearTrack(metaWindow),
-          },
-        ]);
-        return true;
-      },
-      clearTrack: (metaWindow) => {
-        const pending = this._pending.tracks.get(metaWindow);
-        if (!pending) return;
-        const { objects, token } = pending;
-        for (const object of objects) {
-          if (isLiveObject(object)) object.disconnectObject(token);
-        }
-        this._pending.tracks.delete(metaWindow);
-      },
-      clearAllTracks: () => {
-        for (const [_win, pending] of this._pending.tracks.entries()) {
-          const { objects, token } = pending;
-          for (const object of objects) {
-            if (isLiveObject(object)) object.disconnectObject(token);
-          }
-        }
-        this._pending.tracks.clear();
-      },
-
-      addSync: (metaWindow, callback) => {
-        // Coalesce rapid updates: only the last scheduled sync runs
-        this._pending.clearSync(metaWindow);
-        const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-          this._pending.syncs.delete(metaWindow);
-          callback();
-          return GLib.SOURCE_REMOVE;
-        });
-        this._pending.syncs.set(metaWindow, idleId);
-      },
-      clearSync: (metaWindow) => {
-        const pendingSyncId = this._pending.syncs.get(metaWindow);
-        if (!pendingSyncId) return;
-        GLib.Source.remove(pendingSyncId);
-        this._pending.syncs.delete(metaWindow);
-      },
-      clearAllSyncs: () => {
-        for (const [_win, syncId] of this._pending.syncs.entries()) {
-          GLib.Source.remove(syncId);
-        }
-        this._pending.syncs.clear();
-      },
-      clearForWindow: (metaWindow) => {
-        this._pending.clearTrack(metaWindow);
-        this._pending.clearSync(metaWindow);
-      },
-      clearAll: () => {
-        this._pending.clearAllSyncs();
-        this._pending.clearAllTracks();
-      },
-      trackCount: () => this._pending.tracks.size,
-    };
+    this._pending = new PendingTracker(this);
     /** @type {Meta.Window | null} */
     this._lastFocusedWindow = null;
 
@@ -129,6 +153,10 @@ export class BorderManager {
   }
 
   // --- Helpers ------------------------------------------------------------
+
+  isLiveWindowData(data) {
+    return !!(data && isLiveObject(data.actor) && isLiveObject(data.border));
+  }
 
   _isInterestingWindow(metaWindow) {
     const modalEnabled = this.configManager?.globalConfig?.modalEnabled ??
@@ -165,7 +193,7 @@ export class BorderManager {
   _invalidateAndUpdate(metaWindow, data) {
     if (!data) return;
     data.borderStyleCache = null;
-    this._queueUpdate(metaWindow, data);
+    this._queueUpdate(metaWindow);
   }
 
   _logWindow(metaWindow, prefix, config, extra) {
@@ -200,17 +228,9 @@ export class BorderManager {
     this._trackAllWindows();
   }
 
-  _queueUpdate(metaWindow, data) {
+  _queueUpdate(metaWindow) {
     // Schedule sync on next idle cycle for smooth updates
-    this._pending.addSync(metaWindow, () => {
-      if (isLiveObject(metaWindow) && this._isLiveWindowData(data)) {
-        this._syncBorderToActor(metaWindow, data);
-      }
-    });
-  }
-
-  _isLiveWindowData(data) {
-    return !!(data && isLiveObject(data.actor) && isLiveObject(data.border));
+    this._pending.addSync(metaWindow);
   }
 
   _isVerboseLogging() {
@@ -263,7 +283,7 @@ export class BorderManager {
 
   // --- Core geometry + style sync -----------------------------------------
 
-  _syncBorderToActor(metaWindow, data) {
+  syncBorder(metaWindow, data) {
     const { border, actor, config } = data;
 
     const windowState = getWindowState(metaWindow, actor);
@@ -313,9 +333,18 @@ export class BorderManager {
     actor.set_child_above_sibling(border, null);
 
     const config = this.configManager.getConfigForWindow(metaWindow);
+
+    const windowData = {
+      border,
+      actor,
+      config,
+      borderStyleCache: null,
+    };
+    this._windowData.set(metaWindow, windowData);
+
     actor.connectObject(
       "notify::allocation",
-      () => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
+      () => this._queueUpdate(metaWindow),
       this,
     );
     metaWindow.connectObject(
@@ -327,7 +356,7 @@ export class BorderManager {
         if (metaWindow.fullscreen) {
           this._hideBorder(data);
         } else {
-          this._queueUpdate(metaWindow, data);
+          this._queueUpdate(metaWindow);
         }
       },
       "notify::wm-class",
@@ -337,23 +366,20 @@ export class BorderManager {
       "notify::title",
       () => this._updateWindowConfig(metaWindow),
       "notify::appears-focused",
-      () => this._queueUpdate(metaWindow, this._windowData.get(metaWindow)),
+      () => this._queueUpdate(metaWindow),
       "position-changed",
       () => {
         // Prevent mutter from leaving artifacts when moving windows quickly
         // until resize is fully complete.
         border.queue_redraw();
       },
+      "size-changed",
+      () => {
+        const data = this._windowData.get(metaWindow);
+        this._hideBorder(data);
+      },
       this,
     );
-
-    const windowData = {
-      border,
-      actor,
-      config,
-      borderStyleCache: null,
-    };
-    this._windowData.set(metaWindow, windowData);
 
     this._logWindow(
       metaWindow,
@@ -363,7 +389,7 @@ export class BorderManager {
     );
 
     // Initial sync
-    this._queueUpdate(metaWindow, windowData);
+    this._queueUpdate(metaWindow);
   }
 
   _untrackWindow(metaWindow) {
@@ -378,7 +404,7 @@ export class BorderManager {
     if (isLiveObject(metaWindow)) metaWindow.disconnectObject(this);
     if (isLiveObject(actor)) actor.disconnectObject(this);
 
-    if (this._isLiveWindowData(data) && border.get_parent?.() === actor) {
+    if (this.isLiveWindowData(data) && border.get_parent?.() === actor) {
       actor.remove_child(border);
     }
 
@@ -399,9 +425,9 @@ export class BorderManager {
       ? this._windowData.get(currentFocus)
       : null;
 
-    const lastValid = lastData && this._isLiveWindowData(lastData);
+    const lastValid = lastData && this.isLiveWindowData(lastData);
     const currentValid = !currentFocus ||
-      (currentData && this._isLiveWindowData(currentData));
+      (currentData && this.isLiveWindowData(currentData));
 
     // If either focused window is invalid, it's either the
     // first window or something went wrong with tracking,
@@ -416,9 +442,9 @@ export class BorderManager {
     }
 
     // Sync the previously focused window (if any)
-    this._queueUpdate(this._lastFocusedWindow, lastData);
+    this._queueUpdate(this._lastFocusedWindow);
     // Sync the newly focused window (if any)
-    this._queueUpdate(currentFocus, currentData);
+    this._queueUpdate(currentFocus);
 
     // Update last focused window
     this._lastFocusedWindow = currentFocus;
