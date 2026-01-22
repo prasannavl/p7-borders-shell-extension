@@ -1,5 +1,6 @@
 import Adw from "gi://Adw";
 import Gio from "gi://Gio";
+import Gdk from "gi://Gdk";
 import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 
@@ -48,6 +49,69 @@ function copyObject(value) {
 function setEntryRowPlaceholder(row, text) {
   const delegate = row.get_delegate();
   delegate.set_placeholder_text(text);
+}
+
+function formatRgba(rgba) {
+  const r = Math.round(rgba.red * 255);
+  const g = Math.round(rgba.green * 255);
+  const b = Math.round(rgba.blue * 255);
+  const alpha = Math.round(rgba.alpha * 1000) / 1000;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function parseRgba(text) {
+  if (!text) return null;
+  const rgba = new Gdk.RGBA();
+  return rgba.parse(text) ? rgba : null;
+}
+
+function makeTransparentRgba() {
+  const rgba = new Gdk.RGBA();
+  rgba.red = 0;
+  rgba.green = 0;
+  rgba.blue = 0;
+  rgba.alpha = 0;
+  return rgba;
+}
+
+function attachColorPicker(row) {
+  const dialog = new Gtk.ColorDialog({ with_alpha: true });
+  const button = new Gtk.ColorDialogButton({ dialog });
+  row.add_suffix(button);
+  row.activatable_widget = button;
+
+  let syncing = false;
+
+  const syncButtonFromText = () => {
+    const rgba = parseRgba(row.text.trim());
+    syncing = true;
+    button.rgba = rgba || makeTransparentRgba();
+    syncing = false;
+  };
+
+  row.connect("notify::text", () => {
+    if (syncing) return;
+    const rgba = parseRgba(row.text.trim());
+    if (!rgba) {
+      syncing = true;
+      button.rgba = makeTransparentRgba();
+      syncing = false;
+      return;
+    }
+    syncing = true;
+    button.rgba = rgba;
+    syncing = false;
+  });
+
+  button.connect("notify::rgba", () => {
+    if (syncing) return;
+    syncing = true;
+    row.text = formatRgba(button.rgba);
+    syncing = false;
+  });
+
+  syncButtonFromText();
+  return button;
 }
 
 function createSpinRow({ title, subtitle, lower, upper, step = 1 }) {
@@ -155,6 +219,8 @@ function createConfigEditor() {
   });
   setEntryRowPlaceholder(activeColorRow, "inherit or rgba(...)");
   setEntryRowPlaceholder(inactiveColorRow, "inherit or rgba(...)");
+  attachColorPicker(activeColorRow);
+  attachColorPicker(inactiveColorRow);
 
   const resetRow = new Adw.ActionRow({
     title: "Reset overrides",
@@ -404,6 +470,8 @@ function buildGlobalPage(settings) {
   });
   setEntryRowPlaceholder(activeColorRow, "auto or rgba(...)");
   setEntryRowPlaceholder(inactiveColorRow, "rgba(...)");
+  attachColorPicker(activeColorRow);
+  attachColorPicker(inactiveColorRow);
   colorsGroup.add(activeColorRow);
   colorsGroup.add(inactiveColorRow);
 
