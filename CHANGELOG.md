@@ -2,6 +2,11 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [35] - Unreleased
+
+- Size change logic tweaks to workaround artifacts for smooth resize.
+- Added color picker for color based prefs
+
 ## [33] - 2025-01-15
 
 - Enable by default: `default-maximized-borders` and `modal-enabled`
