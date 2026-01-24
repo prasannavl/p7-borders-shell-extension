@@ -78,11 +78,11 @@ class PendingTracker {
     this.tracks.clear();
   }
 
-  addSync(metaWindow) {
+  addSync(metaWindow, windowData = null) {
     this.clearSync(metaWindow);
     const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
       this.syncs.delete(metaWindow);
-      const latestData = this._manager._windowData.get(metaWindow);
+      const latestData = windowData ?? this._manager._windowData.get(metaWindow);
       if (
         isLiveObject(metaWindow) &&
         this._manager.isLiveWindowData(latestData)
@@ -193,7 +193,7 @@ export class BorderManager {
   _invalidateAndUpdate(metaWindow, data) {
     if (!data) return;
     data.borderStyleCache = null;
-    this._queueUpdate(metaWindow);
+    this._queueUpdate(metaWindow, data);
   }
 
   _logWindow(metaWindow, prefix, config, extra) {
@@ -228,9 +228,9 @@ export class BorderManager {
     this._trackAllWindows();
   }
 
-  _queueUpdate(metaWindow) {
+  _queueUpdate(metaWindow, windowData = null) {
     // Schedule sync on next idle cycle for smooth updates
-    this._pending.addSync(metaWindow);
+    this._pending.addSync(metaWindow, windowData);
   }
 
   _isVerboseLogging() {
@@ -344,7 +344,7 @@ export class BorderManager {
 
     actor.connectObject(
       "notify::allocation",
-      () => this._queueUpdate(metaWindow),
+      () => this._queueUpdate(metaWindow, windowData),
       this,
     );
     metaWindow.connectObject(
@@ -352,11 +352,10 @@ export class BorderManager {
       () => this._untrackWindow(metaWindow),
       "notify::fullscreen",
       () => {
-        const data = this._windowData.get(metaWindow);
         if (metaWindow.fullscreen) {
-          this._hideBorder(data);
+          this._hideBorder(windowData);
         } else {
-          this._queueUpdate(metaWindow);
+          this._queueUpdate(metaWindow, windowData);
         }
       },
       "notify::wm-class",
@@ -366,7 +365,7 @@ export class BorderManager {
       "notify::title",
       () => this._updateWindowConfig(metaWindow),
       "notify::appears-focused",
-      () => this._queueUpdate(metaWindow),
+      () => this._queueUpdate(metaWindow, windowData),
       "position-changed",
       () => {
         // Prevent mutter from leaving artifacts when moving windows quickly
@@ -375,8 +374,12 @@ export class BorderManager {
       },
       "size-changed",
       () => {
-        const data = this._windowData.get(metaWindow);
-        this._hideBorder(data);
+        // We hide the border of size change to prevent old borders from
+        // showing up as artifacts during resize. notify::allocation handler
+        // will be fired again once the the new size is allocated. That's
+        // queued and coalesced, so that draws it smoothly. This removes
+        // artifacting and makes smooth consistent borders during resize.
+        this._hideBorder(windowData);
       },
       this,
     );
@@ -389,7 +392,7 @@ export class BorderManager {
     );
 
     // Initial sync
-    this._queueUpdate(metaWindow);
+    this._queueUpdate(metaWindow, windowData);
   }
 
   _untrackWindow(metaWindow) {
@@ -442,9 +445,9 @@ export class BorderManager {
     }
 
     // Sync the previously focused window (if any)
-    this._queueUpdate(this._lastFocusedWindow);
+    this._queueUpdate(this._lastFocusedWindow, lastData);
     // Sync the newly focused window (if any)
-    this._queueUpdate(currentFocus);
+    this._queueUpdate(currentFocus, currentData);
 
     // Update last focused window
     this._lastFocusedWindow = currentFocus;
