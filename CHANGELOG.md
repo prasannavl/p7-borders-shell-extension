@@ -2,7 +2,7 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [35] - Unreleased
+## [35] - 2025-01-24
 
 - Size change logic tweaks to workaround artifacts for smooth resize.
 - Added color picker for color based prefs
