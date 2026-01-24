@@ -82,7 +82,8 @@ class PendingTracker {
     this.clearSync(metaWindow);
     const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
       this.syncs.delete(metaWindow);
-      const latestData = windowData ?? this._manager._windowData.get(metaWindow);
+      const latestData = windowData ??
+        this._manager._windowData.get(metaWindow);
       if (
         isLiveObject(metaWindow) &&
         this._manager.isLiveWindowData(latestData)
