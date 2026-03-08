@@ -268,7 +268,7 @@ export class ConfigManager {
       // Map GNOME accent colors to RGBA values with alpha 0.4
       const accentColorMap = {
         blue: "rgba(53, 132, 228, 0.4)",
-        teal: "rgba(51, 209, 122, 0.4)",
+        teal: "rgba(33, 144, 164, 0.4)",
         green: "rgba(46, 194, 126, 0.4)",
         yellow: "rgba(248, 228, 92, 0.4)",
         orange: "rgba(255, 120, 0, 0.4)",
