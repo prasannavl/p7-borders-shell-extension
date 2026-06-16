@@ -74,7 +74,7 @@ export class ConfigManager {
         } else {
           this._logger.warn("invalid app configs, falling back to default");
         }
-      } catch (error) {
+      } catch (_err) {
         this._logger.warn("app config parse err, falling back to default");
       }
     }
@@ -86,10 +86,11 @@ export class ConfigManager {
     this.appConfigs = {};
 
     // Create default config
-    const defaultConfig = this.defaults = this.normalizeConfig(
+    this.defaults = this.normalizeConfig(
       defaults,
       globalConfig,
     );
+    const defaultConfig = this.defaults;
 
     // Normalize all other configs using default as base
     for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
@@ -164,7 +165,6 @@ export class ConfigManager {
       "class:cheese": "@gtkPreset",
       "class:solaar": "@gtkPreset",
       "class:com.github.xournalpp.xournalpp": "@gtkPreset",
-      "class:gnome-disks": "@gtkPreset",
       "class:blender": "@gtkPreset",
       "class:fr.handbrake.ghb": "@gtkPreset",
       // "class:org.pulseaudio.pavucontrol": "@gtkPreset",
