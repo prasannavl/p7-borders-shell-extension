@@ -8,11 +8,12 @@
 		"46",
 		"47",
 		"48",
-		"49"
+		"49",
+		"50"
 	],
 	"settings-schema": "org.gnome.shell.extensions.p7-borders",
 	"donations": {
 		"github": "prasannavl"
 	},
-	"version": 41
+	"version": 42
 }
