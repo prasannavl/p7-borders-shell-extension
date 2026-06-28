@@ -2,7 +2,11 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [43] - 2026-02-12
+## [44] - 2026-06-28
+
+- More presets.
+
+## [43] - 2026-06-28
 
 - More presets along with GNOME 50 compatibility in the v42+.
 

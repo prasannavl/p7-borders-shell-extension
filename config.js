@@ -201,6 +201,7 @@ export class ConfigManager {
       "class:SQLiteStudio": "@qtPreset",
       "class:btrfs-assistant": "@qtPreset",
       "class:Jan": "@qtPreset",
+      "class:DB Browser for SQLite": "@qtPreset",
       // Others
       "class:dev.zed.Zed": "@zedPreset",
       "class:mpv": "@zeroPreset",
