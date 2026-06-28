@@ -150,6 +150,8 @@ export class ConfigManager {
       "class:org.gnome.Connections": "@gtkPreset",
       "class:firefox": "@gtkPreset",
       "class:firefox-esr": "@gtkPreset",
+      "class:thunderbird": "@gtkPreset",
+      "class:thunderbird-esr": "@gtkPreset",
       "class:io.ente.auth": "@gtkPreset",
       "class:dconf-editor": "@gtkPreset",
       "class:org.gimp.GIMP": "@gtkPreset",
@@ -167,6 +169,7 @@ export class ConfigManager {
       "class:com.github.xournalpp.xournalpp": "@gtkPreset",
       "class:blender": "@gtkPreset",
       "class:fr.handbrake.ghb": "@gtkPreset",
+      "class:com.dec05eba.gpu_screen_recorder": "@gtkPreset",
       // "class:org.pulseaudio.pavucontrol": "@gtkPreset",
       // Chrome
       "regex.class:^google-chrome": "@chromePreset",
@@ -194,17 +197,25 @@ export class ConfigManager {
       "class:org.kde.kdenlive": "@qtPreset",
       "class:org.shotcut.Shotcut": "@qtPreset",
       "class:com.obsproject.Studio": "@qtPreset",
+      "class:org.qbittorrent.qBittorrent": "@qtPreset",
+      "class:SQLiteStudio": "@qtPreset",
+      "class:btrfs-assistant": "@qtPreset",
+      "class:Jan": "@qtPreset",
       // Others
       "class:dev.zed.Zed": "@zedPreset",
       "class:mpv": "@zeroPreset",
       // Custom
       "class:foot": "@zeroPreset",
       "class:footclient": "@zeroPreset",
+      "class:kitty": "@zeroPreset",
       "class:Alacritty": {
         radius: { tl: 12, tr: 12 },
       },
       "class:gnome-disks": {
         radius: { tl: 10, tr: 10, br: 11, bl: 11 },
+      },
+      "class:xwaylandvideobridge": {
+        enabled: false,
       },
     };
   }
@@ -212,7 +223,7 @@ export class ConfigManager {
   _ensureDefaults() {
     // Check if this is the first run by looking at config-version
     const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 9;
+    const currentRevision = 10;
 
     if (configVersion < currentRevision) {
       this._logger.log(
