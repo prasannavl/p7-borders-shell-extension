@@ -2,8 +2,13 @@ import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { applyBorderState, getWindowState } from "./compat.js";
-import { ConfigManager } from "./config.js";
+import {
+  applyBorderState,
+  applyTitleState,
+  getEffectiveFrame,
+  getWindowState,
+} from "./compat.js";
+import { ConfigManager, WINDOW_OVERRIDE_PROP } from "./config.js";
 
 // We do these live GObject checks as gnome shell can lose it's actors
 // without us being notified correctly. Often happens in cases
@@ -11,6 +16,20 @@ import { ConfigManager } from "./config.js";
 // Some case the shell recovers, some case it might not, but still doing
 // these checks avoid adding extra red-herring and makes things
 // more graceful.
+// Client-side decorated windows draw their headerbar in the app process, so
+// its height cannot be queried from here — only server-side decorations can
+// (see getTitlebarHeight). This is not a guess though: GTK's own themes set
+//   headerbar { min-height: 46px }
+// in both GTK3 (Adwaita/gtk-contained.css) and GTK4 (Default/Default.css),
+// and Yaru inherits that value unchanged. Scaled below for HiDPI.
+const FALLBACK_TITLE_HEIGHT = 46;
+const DEFAULT_TITLE_OPACITY = 0.35;
+
+function getFallbackTitleHeight() {
+  const scale = St.ThemeContext.get_for_stage(global.stage)?.scale_factor || 1;
+  return Math.round(FALLBACK_TITLE_HEIGHT * scale);
+}
+
 const isLiveObject = (object) => {
   if (!object) return false;
   try {
@@ -156,7 +175,12 @@ export class BorderManager {
   // --- Helpers ------------------------------------------------------------
 
   isLiveWindowData(data) {
-    return !!(data && isLiveObject(data.actor) && isLiveObject(data.border));
+    return !!(
+      data &&
+      isLiveObject(data.actor) &&
+      isLiveObject(data.border) &&
+      isLiveObject(data.titleTint)
+    );
   }
 
   _isInterestingWindow(metaWindow) {
@@ -188,12 +212,15 @@ export class BorderManager {
   _hideBorder(data) {
     if (!data) return;
     data.border.visible = false;
+    data.titleTint.visible = false;
     data.borderStyleCache = null;
+    data.titleStyleCache = null;
   }
 
   _invalidateAndUpdate(metaWindow, data) {
     if (!data) return;
     data.borderStyleCache = null;
+    data.titleStyleCache = null;
     this._queueUpdate(metaWindow, data);
   }
 
@@ -285,12 +312,12 @@ export class BorderManager {
   // --- Core geometry + style sync -----------------------------------------
 
   syncBorder(metaWindow, data) {
-    const { border, actor, config } = data;
+    const { border, titleTint, actor, config } = data;
 
     const windowState = getWindowState(metaWindow, actor);
-    const policyState = computeBorderState(windowState, config);
 
-    applyBorderState(border, policyState, data);
+    applyBorderState(border, computeBorderState(windowState, config), data);
+    applyTitleState(titleTint, computeTitleState(windowState, config), data);
   }
 
   // --- Per-window lifecycle -----------------------------------------------
@@ -310,6 +337,26 @@ export class BorderManager {
     this._logWindow(metaWindow, "config updated", config);
   }
 
+  // Sets (or clears, with null) the colour override for one window and
+  // repaints just that window. Called from the window menu.
+  setWindowOverride(metaWindow, override) {
+    if (override) {
+      metaWindow[WINDOW_OVERRIDE_PROP] = override;
+    } else {
+      delete metaWindow[WINDOW_OVERRIDE_PROP];
+    }
+
+    const data = this._windowData.get(metaWindow);
+    if (!data) return;
+
+    data.config = this.configManager.getConfigForWindow(metaWindow);
+    this._invalidateAndUpdate(metaWindow, data);
+  }
+
+  getWindowOverride(metaWindow) {
+    return metaWindow[WINDOW_OVERRIDE_PROP] || null;
+  }
+
   _tryTrackWindow(metaWindow) {
     if (!this._isInterestingWindow(metaWindow)) return;
     if (this._windowData.has(metaWindow)) return;
@@ -325,11 +372,18 @@ export class BorderManager {
       reactive: false,
       visible: false,
     });
+    const titleTint = new St.Widget({
+      reactive: false,
+      visible: false,
+    });
 
     // Ensure we can draw outside if "outer" expands
     actor.clip_to_allocation = false;
     border.clip_to_allocation = false;
 
+    // Tint sits under the border so the border edge stays crisp over it.
+    actor.add_child(titleTint);
+    actor.set_child_above_sibling(titleTint, null);
     actor.add_child(border);
     actor.set_child_above_sibling(border, null);
 
@@ -337,15 +391,25 @@ export class BorderManager {
 
     const windowData = {
       border,
+      titleTint,
       actor,
       config,
       borderStyleCache: null,
+      titleStyleCache: null,
     };
     this._windowData.set(metaWindow, windowData);
 
     actor.connectObject(
       "notify::allocation",
       () => this._queueUpdate(metaWindow, windowData),
+      "destroy",
+      () => {
+        // The actor took its children down with it. Drop the references so
+        // nothing downstream touches disposed widgets.
+        windowData.border = null;
+        windowData.titleTint = null;
+        this._untrackWindow(metaWindow);
+      },
       this,
     );
     metaWindow.connectObject(
@@ -410,12 +474,14 @@ export class BorderManager {
 
     this._logWindow(metaWindow, "untrack", data.config);
 
-    const { border, actor } = data;
+    const { border, titleTint, actor } = data;
     if (isLiveObject(metaWindow)) metaWindow.disconnectObject(this);
     if (isLiveObject(actor)) actor.disconnectObject(this);
 
-    if (this.isLiveWindowData(data) && border.get_parent?.() === actor) {
-      actor.remove_child(border);
+    if (this.isLiveWindowData(data)) {
+      for (const child of [border, titleTint]) {
+        if (child?.get_parent?.() === actor) actor.remove_child(child);
+      }
     }
 
     this._windowData.delete(metaWindow);
@@ -505,11 +571,44 @@ export class BorderManager {
   }
 }
 
+// The title bar itself cannot be recoloured: CSD apps paint it in their own
+// process, and SSD frames come from mutter's GTK theme. Laying a translucent
+// wash over that strip tints it while leaving the title and buttons legible.
+function computeTitleState(windowState, config) {
+  const { isFullscreen, maximize, titlebarHeight, isFocused } = windowState;
+
+  if (!config.enabled || !config.titleTint || isFullscreen) {
+    return { visible: false };
+  }
+
+  const effectiveFrame = getEffectiveFrame(windowState);
+  // Measured height wins. Failing that, a per-app override, then the scaled
+  // fallback — CSD apps never reach the first branch.
+  const height = Math.min(
+    titlebarHeight || config.titleHeight || getFallbackTitleHeight(),
+    effectiveFrame.height,
+  );
+
+  if (height <= 0 || effectiveFrame.width <= 0) return { visible: false };
+
+  return {
+    visible: true,
+    pos: { x: effectiveFrame.x, y: effectiveFrame.y },
+    size: { width: effectiveFrame.width, height },
+    color: config.titleColor ??
+      (isFocused ? config.activeColor : config.inactiveColor),
+    opacity: Math.round(
+      (config.titleOpacity ?? DEFAULT_TITLE_OPACITY) * 255,
+    ),
+    radius: maximize.any
+      ? { tl: 0, tr: 0 }
+      : { tl: config.radius.tl, tr: config.radius.tr },
+  };
+}
+
 function computeBorderState(windowState, config) {
   const {
-    box,
     frame,
-    buffer,
     workarea,
     isFullscreen,
     maximize,
@@ -532,19 +631,7 @@ function computeBorderState(windowState, config) {
 
   // We calculate the effective frame so that any additional shadows
   // that's drawn by the actors aren't counted for the border.
-  const effectiveFrame = buffer
-    ? {
-      x: frame.x - buffer.x,
-      y: frame.y - buffer.y,
-      width: frame.width,
-      height: frame.height,
-    }
-    : {
-      x: 0,
-      y: 0,
-      width: box.width,
-      height: box.height,
-    };
+  const effectiveFrame = getEffectiveFrame(windowState);
 
   const { width, height } = effectiveFrame;
   if (width <= 0 || height <= 0) {
