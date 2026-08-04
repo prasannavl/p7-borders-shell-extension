@@ -26,6 +26,19 @@ export function getMaximizeState(metaWindow) {
   return { any, full, horizontal, vertical };
 }
 
+// Height of the server-drawn titlebar. Returns 0 for client-side decorated
+// windows: the app draws its own headerbar, so there is nothing to measure
+// and callers fall back to a configured height.
+export function getTitlebarHeight(metaWindow) {
+  if (metaWindow.is_client_decorated?.()) return 0;
+
+  const frame = metaWindow.get_frame_rect();
+  const client = metaWindow.frame_rect_to_client_rect?.(frame);
+  if (!client) return 0;
+
+  return Math.max(0, client.y - frame.y);
+}
+
 export function getWindowState(metaWindow, actor) {
   const box = actor.get_allocation_box();
   const width = box.x2 - box.x1;
@@ -43,9 +56,51 @@ export function getWindowState(metaWindow, actor) {
     buffer,
     workarea,
     maximize,
+    titlebarHeight: getTitlebarHeight(metaWindow),
     isFullscreen: !!metaWindow.fullscreen,
     isFocused: metaWindow === global.display.focus_window,
   };
+}
+
+// Frame position relative to the actor, with any shadow the actor draws
+// discounted. Shared by the border and the title tint.
+export function getEffectiveFrame({ box, frame, buffer }) {
+  if (!buffer) {
+    return { x: 0, y: 0, width: box.width, height: box.height };
+  }
+  return {
+    x: frame.x - buffer.x,
+    y: frame.y - buffer.y,
+    width: frame.width,
+    height: frame.height,
+  };
+}
+
+export function applyTitleState(tint, state, cache) {
+  if (!state.visible) {
+    tint.visible = false;
+    if (cache) cache.titleStyleCache = null;
+    return;
+  }
+
+  tint.set_position(state.pos.x, state.pos.y);
+  tint.set_size(state.size.width, state.size.height);
+
+  const { color, radius } = state;
+  const styleKey = `${color}|${radius.tl},${radius.tr}`;
+
+  if (cache?.titleStyleCache !== styleKey) {
+    tint.set_style(
+      `background-color: ${color};` +
+        `border-radius: ${radius.tl}px ${radius.tr}px 0 0;`,
+    );
+  }
+
+  // Opacity lives on the actor rather than in the colour string, so the
+  // configured colour can stay in any format St accepts.
+  tint.opacity = state.opacity;
+  tint.visible = true;
+  if (cache) cache.titleStyleCache = styleKey;
 }
 
 export function applyBorderState(border, state, cache) {

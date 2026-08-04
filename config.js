@@ -1,6 +1,11 @@
 // config.js
 
 import Gio from "gi://Gio";
+
+// Expando on Meta.Window carrying a single-window colour override.
+export const WINDOW_OVERRIDE_PROP = "__p7BorderOverride";
+const WINDOW_MERGED_PROP = "__p7BorderMerged";
+
 export class ConfigManager {
   constructor(settings, logger) {
     // Use the settings object provided by Extension.getSettings()
@@ -359,7 +364,32 @@ export class ConfigManager {
     return resolvedConfigs;
   }
 
+  // A per-window override beats the app config. Stored on the Meta.Window
+  // itself so it dies with the window — window ids are not stable across
+  // sessions, so persisting it would be meaningless anyway.
+  // ponytail: overrides only carry colors/enabled, which normalizeConfig
+  // does not touch, so merging onto the normalized app config is safe.
   getConfigForWindow(metaWindow) {
+    const appConfig = this._getAppConfigForWindow(metaWindow);
+    const override = metaWindow[WINDOW_OVERRIDE_PROP];
+    if (!override) return appConfig;
+
+    // Memoised so the returned object keeps a stable identity — callers
+    // compare configs by reference to decide whether to repaint, and a
+    // fresh merge on every title change would repaint constantly.
+    let cache = metaWindow[WINDOW_MERGED_PROP];
+    if (!cache || cache.base !== appConfig || cache.override !== override) {
+      cache = {
+        base: appConfig,
+        override,
+        merged: { ...appConfig, ...override },
+      };
+      metaWindow[WINDOW_MERGED_PROP] = cache;
+    }
+    return cache.merged;
+  }
+
+  _getAppConfigForWindow(metaWindow) {
     const appId = metaWindow.get_gtk_application_id?.() || "";
     const wmClass = metaWindow.get_wm_class?.() || "";
 
