@@ -10,6 +10,107 @@ const APP_CONFIGS_KEY = "app-configs";
 const CUSTOM_LABEL = "Custom";
 const DEFAULT_PRESET_KEY = "@default";
 
+// ponytail: the shell side owns the window list; prefs is a separate process
+// and cannot reach mutter directly. See windowlist.js.
+function listOpenWindows(callback) {
+  Gio.DBus.session.call(
+    "org.gnome.Shell.Extensions.P7Borders",
+    "/org/gnome/shell/extensions/p7borders",
+    "org.gnome.Shell.Extensions.P7Borders",
+    "ListWindows",
+    null,
+    new GLib.VariantType("(s)"),
+    Gio.DBusCallFlags.NONE,
+    -1,
+    null,
+    (_src, res) => {
+      try {
+        const [json] = Gio.DBus.session.call_finish(res).deepUnpack();
+        callback(JSON.parse(json), null);
+      } catch (err) {
+        callback(null, err);
+      }
+    },
+  );
+}
+
+// Button that pops up the currently open windows and writes the chosen
+// app's key into `entry`. Preferred key is class:, app: is the fallback.
+function createWindowPickerButton(entry) {
+  const button = new Gtk.MenuButton({
+    icon_name: "focus-windows-symbolic",
+    tooltip_text: "Pick an open window",
+    valign: Gtk.Align.CENTER,
+  });
+  const popover = new Gtk.Popover({ width_request: 320 });
+  button.set_popover(popover);
+
+  popover.connect("show", () => {
+    const box = new Gtk.Box({
+      orientation: Gtk.Orientation.VERTICAL,
+      spacing: 6,
+    });
+    box.append(new Gtk.Label({ label: "Loading…", xalign: 0 }));
+    popover.set_child(box);
+
+    listOpenWindows((windows, err) => {
+      const content = new Gtk.Box({
+        orientation: Gtk.Orientation.VERTICAL,
+        spacing: 6,
+      });
+
+      if (err) {
+        content.append(new Gtk.Label({
+          label: "Could not reach the extension.\nIs it enabled?",
+          xalign: 0,
+          css_classes: ["dim-label"],
+        }));
+        popover.set_child(content);
+        return;
+      }
+
+      const list = new Gtk.ListBox({
+        selection_mode: Gtk.SelectionMode.NONE,
+        css_classes: ["boxed-list"],
+      });
+
+      for (const win of windows) {
+        const key = win.wmClass ? `class:${win.wmClass}` : `app:${win.appId}`;
+        const row = new Adw.ActionRow({
+          title: key,
+          subtitle: win.title,
+          activatable: true,
+        });
+        row.connect("activated", () => {
+          entry.text = key.toLowerCase();
+          popover.popdown();
+        });
+        list.append(row);
+      }
+
+      if (!windows.length) {
+        content.append(new Gtk.Label({
+          label: "No open windows found.",
+          xalign: 0,
+          css_classes: ["dim-label"],
+        }));
+      } else {
+        const scroller = new Gtk.ScrolledWindow({
+          propagate_natural_height: true,
+          max_content_height: 400,
+          hscrollbar_policy: Gtk.PolicyType.NEVER,
+        });
+        scroller.set_child(list);
+        content.append(scroller);
+      }
+
+      popover.set_child(content);
+    });
+  });
+
+  return button;
+}
+
 function parseAppConfigs(settings) {
   const raw = settings.get_string(APP_CONFIGS_KEY);
   if (!raw) return {};
@@ -726,7 +827,8 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
 
   const addKeyInfoRow = new Adw.ActionRow({
     title: "Key",
-    subtitle: "Use app:ID, class:WM_CLASS, or regex.class:pattern",
+    subtitle:
+      "Use the window button, or type app:ID / class:WM_CLASS / regex.class:pattern",
   });
   addExpander.add_row(addKeyInfoRow);
   const addEntry = new Gtk.Entry({
@@ -734,8 +836,14 @@ function buildConfigsPage(settings, initialConfigs, registerSettingsHandler) {
     halign: Gtk.Align.FILL,
     placeholder_text: "class:org.gnome.Terminal",
   });
+  const addEntryBox = new Gtk.Box({
+    orientation: Gtk.Orientation.HORIZONTAL,
+    spacing: 6,
+  });
+  addEntryBox.append(addEntry);
+  addEntryBox.append(createWindowPickerButton(addEntry));
   const addEntryRow = new Adw.PreferencesRow({ hexpand: true });
-  addEntryRow.set_child(addEntry);
+  addEntryRow.set_child(addEntryBox);
   addExpander.add_row(addEntryRow);
 
   const addPresetRow = new Adw.ComboRow({
