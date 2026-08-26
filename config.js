@@ -144,6 +144,9 @@ export class ConfigManager {
       "class:re.sonny.Workbench": "@adwPreset",
       "class:com.mattjakeman.ExtensionManager": "@adwPreset",
       "class:com.mitchellh.ghostty": "@adwPreset",
+      "class:io.github.htkhiem.Euphonica": "@adwPreset",
+      "class:io.bassi.Amberol": "@adwPreset",
+      "class:ca.edestcroix.Recordbox": "@adwPreset",
       // Gtk
       "class:org.gnome.Terminal": "@gtkPreset",
       "class:org.gnome.seahorse.Application": "@gtkPreset",
@@ -180,6 +183,9 @@ export class ConfigManager {
       // Electron
       "class:electron": "@zeroPreset",
       "class:obsidian": "@zeroPreset",
+      "class:md.Obsidian": "@zeroPreset",
+      "class:Chatgpt": "@zeroPreset",
+      "class:com.anthropic.Claude": "@zeroPreset",
       "class:zulip": "@zeroPreset",
       "class:slack": "@zeroPreset",
       "class:code": "@zeroPreset",
@@ -201,10 +207,12 @@ export class ConfigManager {
       "class:SQLiteStudio": "@qtPreset",
       "class:btrfs-assistant": "@qtPreset",
       "class:Jan": "@qtPreset",
+      "class:vimiv": "@qtPreset",
       "class:DB Browser for SQLite": "@qtPreset",
       // Others
       "class:dev.zed.Zed": "@zedPreset",
       "class:mpv": "@zeroPreset",
+      "class:imv": "@zeroPreset",
       // Custom
       "class:foot": "@zeroPreset",
       "class:footclient": "@zeroPreset",
@@ -224,7 +232,7 @@ export class ConfigManager {
   _ensureDefaults() {
     // Check if this is the first run by looking at config-version
     const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 10;
+    const currentRevision = 11;
 
     if (configVersion < currentRevision) {
       this._logger.log(

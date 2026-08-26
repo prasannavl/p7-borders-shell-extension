@@ -2,6 +2,10 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [45] - 2026-08-26
+
+- Add more application presets.
+
 ## [44] - 2026-06-28
 
 - More presets.
