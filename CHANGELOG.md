@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [46] - 2026-08-30
 
 - Add a GTK 3 preset and more application defaults.
+- Prevent GNOME Shell crashes when displays power off or disconnect.
 
 ## [45] - 2026-08-26
 

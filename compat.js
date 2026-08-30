@@ -26,6 +26,13 @@ export function getMaximizeState(metaWindow) {
   return { any, full, horizontal, vertical };
 }
 
+function getWorkarea(metaWindow) {
+  const monitor = metaWindow.get_monitor();
+  if (monitor < 0 || monitor >= global.display.get_n_monitors()) return null;
+
+  return metaWindow.get_work_area_current_monitor();
+}
+
 export function getWindowState(metaWindow, actor) {
   const box = actor.get_allocation_box();
   const width = box.x2 - box.x1;
@@ -34,7 +41,7 @@ export function getWindowState(metaWindow, actor) {
   const frame = metaWindow.get_frame_rect();
   const buffer = metaWindow.get_buffer_rect?.() ?? frame;
 
-  const workarea = metaWindow.get_work_area_current_monitor();
+  const workarea = getWorkarea(metaWindow);
   const maximize = getMaximizeState(metaWindow);
 
   return {

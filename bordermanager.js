@@ -521,6 +521,7 @@ function computeBorderState(windowState, config) {
   const radiusEnabled = !!(radius.tl || radius.tr || radius.br || radius.bl);
 
   if (
+    !workarea ||
     isFullscreen ||
     maximize.full ||
     (!config.maximizedBorder && maximize.any) ||
