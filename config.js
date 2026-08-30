@@ -126,6 +126,9 @@ export class ConfigManager {
       "@gtkPreset": {
         radius: { tl: 10, tr: 10, br: 0, bl: 0 },
       },
+      "gtk3Preset": {
+        radius: { tl: 10, tr: 10, br: 11, bl: 11 },
+      },
       "@qtPreset": {
         radius: { tl: 18, tr: 18, br: 0, bl: 0 },
       },
@@ -136,7 +139,7 @@ export class ConfigManager {
         margins: { right: -1, bottom: -1 },
         radius: { tl: 14, tr: 14, br: 10, bl: 10 },
       },
-      // Adw
+      //// Adw
       "regex.class:^org.gnome.*": "@adwPreset",
       // "regex.class:^org.freedesktop.*": "@adwPreset",
       "class:com.github.tchx84.Flatseal": "@adwPreset",
@@ -147,10 +150,13 @@ export class ConfigManager {
       "class:io.github.htkhiem.Euphonica": "@adwPreset",
       "class:io.bassi.Amberol": "@adwPreset",
       "class:ca.edestcroix.Recordbox": "@adwPreset",
-      // Gtk
+
+      //// Gtk
       "class:org.gnome.Terminal": "@gtkPreset",
       "class:org.gnome.seahorse.Application": "@gtkPreset",
       "class:org.gnome.Connections": "@gtkPreset",
+      "class:gnome-power-statistics": "@gtkPreset",
+      "class:org.gnome.PowerStats": "@gtkPreset",
       "class:firefox": "@gtkPreset",
       "class:firefox-esr": "@gtkPreset",
       "class:thunderbird": "@gtkPreset",
@@ -166,24 +172,30 @@ export class ConfigManager {
       "class:libreoffice-impress": "@gtkPreset",
       "class:libreoffice-draw": "@gtkPreset",
       "class:libreoffice-base": "@gtkPreset",
-      "class:gnome-power-statistics": "@gtkPreset",
       "class:cheese": "@gtkPreset",
       "class:solaar": "@gtkPreset",
       "class:com.github.xournalpp.xournalpp": "@gtkPreset",
       "class:blender": "@gtkPreset",
       "class:fr.handbrake.ghb": "@gtkPreset",
       "class:com.dec05eba.gpu_screen_recorder": "@gtkPreset",
-      // "class:org.pulseaudio.pavucontrol": "@gtkPreset",
-      // Chrome
+      "class:org.pulseaudio.pavucontrol": "@gtkPreset",
+
+      //// Gtk3
+      "class:lollypop": "@gtk3Preset",
+      "class:geary": "@gtk3Preset",
+      "class:gnome-disks": "@gtk3Preset",
+      // The newer versions use md.Obsidian and curved corners.
+      "class:md.Obsidian": "@gtk3Preset",
+
+      //// Chrome
       "regex.class:^google-chrome": "@chromePreset",
-      // Chrome apps
+      //// Chrome apps
       "regex.class:^chrome-": "@chromePreset",
-      // Chromium
+      //// Chromium
       "regex.class:^chromium": "@chromePreset",
-      // Electron
+      //// Electron
       "class:electron": "@zeroPreset",
       "class:obsidian": "@zeroPreset",
-      "class:md.Obsidian": "@zeroPreset",
       "class:Chatgpt": "@zeroPreset",
       "class:com.anthropic.Claude": "@zeroPreset",
       "class:zulip": "@zeroPreset",
@@ -192,11 +204,11 @@ export class ConfigManager {
       "class:antigravity": "@zeroPreset",
       "class:spotify": "@zeroPreset",
       "class:discord": "@zeroPreset",
-      // Other chormium browsers
+      //// Other chormium browsers
       "class:microsoft-edge": "@chromePreset",
       "class:brave-browser": "@chromePreset",
       "regex.class:^vivaldi": "@zeroPreset",
-      // Qt
+      //// Qt
       "class:vlc": "@qtPreset",
       "class:krita": "@qtPreset",
       "class:qpwgraph": "@qtPreset",
@@ -209,19 +221,16 @@ export class ConfigManager {
       "class:Jan": "@qtPreset",
       "class:vimiv": "@qtPreset",
       "class:DB Browser for SQLite": "@qtPreset",
-      // Others
+      //// Others
       "class:dev.zed.Zed": "@zedPreset",
       "class:mpv": "@zeroPreset",
       "class:imv": "@zeroPreset",
-      // Custom
+      //// Custom
       "class:foot": "@zeroPreset",
       "class:footclient": "@zeroPreset",
       "class:kitty": "@zeroPreset",
       "class:Alacritty": {
         radius: { tl: 12, tr: 12 },
-      },
-      "class:gnome-disks": {
-        radius: { tl: 10, tr: 10, br: 11, bl: 11 },
       },
       "class:xwaylandvideobridge": {
         enabled: false,
@@ -232,7 +241,7 @@ export class ConfigManager {
   _ensureDefaults() {
     // Check if this is the first run by looking at config-version
     const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 11;
+    const currentRevision = 12;
 
     if (configVersion < currentRevision) {
       this._logger.log(
