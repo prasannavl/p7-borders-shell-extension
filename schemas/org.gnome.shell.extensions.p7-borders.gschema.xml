@@ -64,18 +64,23 @@
       <description>Default color for inactive window borders</description>
     </key>
 
-    <!-- Application configurations as JSON string -->
-    <key name="app-configs" type="s">
+    <!-- User application and preset rules as a JSON string. -->
+    <key name="rules" type="s">
       <default>'{}'</default>
-      <summary>Application-specific configurations</summary>
-      <description>JSON string containing application-specific border configurations</description>
+      <summary>User configuration rules</summary>
+      <description>JSON string containing user rules layered over shipped presets and application configurations</description>
     </key>
-    
-    <!-- Configuration version for migrations -->
+
+    <key name="use-shipped-configs" type="b">
+      <default>true</default>
+      <summary>Use shipped application configurations</summary>
+      <description>Layer user rules over shipped presets and application configurations</description>
+    </key>
+
     <key name="config-version" type="i">
-      <default>1</default>
-      <summary>Configuration version</summary>
-      <description>Version number for configuration migration purposes</description>
+      <default>13</default>
+      <summary>Configuration storage version</summary>
+      <description>Version of the persisted configuration format for future migrations</description>
     </key>
     
   </schema>

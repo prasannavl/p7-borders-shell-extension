@@ -239,8 +239,6 @@ export class BorderManager {
       () => this._updateWindowConfig(metaWindow),
       "notify::gtk-application-id",
       () => this._updateWindowConfig(metaWindow),
-      "notify::title",
-      () => this._updateWindowConfig(metaWindow),
       "notify::appears-focused",
       () => this._queueUpdate(metaWindow, windowData),
       "position-changed",
@@ -299,7 +297,8 @@ export class BorderManager {
 
   _onConfigChanged(changeType) {
     this._logger.log(`conf changed: ${changeType}`);
-    this._retrackAllWindows();
+    if (changeType === "modal-enabled") this._retrackAllWindows();
+    else this._resyncAll();
   }
 
   _onFocusChanged() {

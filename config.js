@@ -1,6 +1,68 @@
 // config.js
 
 import Gio from "gi://Gio";
+import {
+  BASE_APP_CONFIGS,
+  buildEffectiveAppConfigs,
+  canonicalizeConfigKey,
+  getConfigMapError,
+  getOrderedRegexConfigs,
+  normalizeMargins,
+  normalizeRadius,
+  normalizeWidth,
+  parseConfigJson,
+  resolveConfigValue,
+  RULES_KEY,
+} from "./appconfig.js";
+
+export const CONFIG_VERSION = 13;
+export const USE_SHIPPED_CONFIGS_KEY = "use-shipped-configs";
+
+export function getSettingsBaseConfigs(settings) {
+  return settings.get_boolean(USE_SHIPPED_CONFIGS_KEY) ? BASE_APP_CONFIGS : {};
+}
+
+export function ensureConfigVersion(settings) {
+  const storedVersion = settings.get_int("config-version");
+  if (
+    settings.get_user_value("config-version") === null ||
+    storedVersion < CONFIG_VERSION
+  ) {
+    settings.set_int("config-version", CONFIG_VERSION);
+  }
+}
+
+export function getSettingsRules(settings) {
+  return parseConfigJson(settings.get_string(RULES_KEY));
+}
+
+export function setSettingsRules(settings, rules) {
+  if (Object.keys(rules).length > 0) {
+    settings.set_string(RULES_KEY, JSON.stringify(rules));
+  } else {
+    settings.reset(RULES_KEY);
+  }
+}
+
+export function readSettingsAppConfigs(settings, logger = null) {
+  const baseConfigs = getSettingsBaseConfigs(settings);
+  let rules = getSettingsRules(settings);
+  let error = getConfigMapError(rules, {
+    allowTombstones: true,
+    validateReferences: false,
+  });
+  if (!error) {
+    const configs = buildEffectiveAppConfigs(rules, baseConfigs);
+    error = getConfigMapError(configs);
+    if (!error) return { configs, rules, baseConfigs };
+  }
+
+  logger?.warn(`Ignoring invalid rules: ${error}`);
+  rules = {};
+  const configs = buildEffectiveAppConfigs({}, baseConfigs);
+  return { configs, rules, baseConfigs };
+}
+
 export class ConfigManager {
   constructor(settings, logger) {
     // Use the settings object provided by Extension.getSettings()
@@ -15,10 +77,12 @@ export class ConfigManager {
     // Callbacks for config changes
     this._configChangeCallbacks = new Set();
 
+    ensureConfigVersion(this._settings);
+
     // Connect to settings changes
     this._settings.connectObject(
       "changed",
-      () => this._reloadConfig("settings-changed"),
+      (_settings, key) => this._reloadConfig(key),
       this,
     );
 
@@ -29,12 +93,6 @@ export class ConfigManager {
       this,
     );
 
-    // Initialize defaults from gsettings
-    this.defaults = {};
-
-    // Check for first run / schema migration and save defaults
-    // when needed
-    this._ensureDefaults();
     this._init();
   }
 
@@ -44,12 +102,11 @@ export class ConfigManager {
     const radiusEnabled = this._settings.get_boolean("radius-enabled");
     const modalEnabled = this._settings.get_boolean("modal-enabled");
     const verboseLogging = this._settings.get_boolean("verbose-logging");
-    const globalConfig = {
+    this.globalConfig = {
       radiusEnabled,
       modalEnabled,
       verboseLogging,
     };
-    this.globalConfig = globalConfig;
 
     // Update default config from the current settings
     const defaults = {
@@ -62,209 +119,40 @@ export class ConfigManager {
       maximizedBorder: this._settings.get_boolean("default-maximized-borders"),
     };
 
-    // Load app configs and falling back to fallback config
-    // if it's invalid json
-    const savedConfigs = this._settings.get_string("app-configs");
-    let parsedConfig = null;
-    if (savedConfigs && savedConfigs.length > 0) {
-      try {
-        const c = JSON.parse(savedConfigs);
-        if (c && typeof c === "object") {
-          parsedConfig = c;
-        } else {
-          this._logger.warn("invalid app configs, falling back to default");
-        }
-      } catch (_err) {
-        this._logger.warn("app config parse err, falling back to default");
-      }
-    }
-
-    parsedConfig = parsedConfig ?? this._fallbackAppConfig();
+    const { configs: rawConfigs, rules, baseConfigs } = readSettingsAppConfigs(
+      this._settings,
+      this._logger,
+    );
 
     // Build normalized app configs
-    const resolvedConfigs = this._resolvePresets(parsedConfig);
+    const resolvedConfigs = this._resolvePresets(rawConfigs);
     this.appConfigs = {};
 
     // Create default config
-    this.defaults = this.normalizeConfig(
-      defaults,
-      globalConfig,
-    );
+    this.defaults = this._normalizeConfig(defaults);
     const defaultConfig = this.defaults;
 
     // Normalize all other configs using default as base
     for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
       if (!key.startsWith("@")) {
-        const normalized = this.normalizeConfig(
+        const normalized = this._normalizeConfig(
           {
             ...defaultConfig,
             // If an app config is specified, it's now whitelisted
-            ...{ enabled: true },
+            enabled: true,
             ...rawConfig,
           },
-          globalConfig,
         );
-        const configKey = key.startsWith("regex.") ? key : key.toLowerCase();
+        const configKey = canonicalizeConfigKey(key);
         this.appConfigs[configKey] = normalized;
       }
     }
-  }
 
-  _fallbackAppConfig() {
-    // If no saved configs, we use the fallback which also
-    // happen to be defaults here. We have it in code instead
-    // of file to avoid unnecessary json read, as it's meant
-    // to be the infallible fallback. This should only happen
-    // on first run, and then gsettings should be the single
-    // source of truth.
-    return {
-      // Presets
-      "@zeroPreset": {},
-      "@adwPreset": {
-        radius: 18,
-      },
-      "@gtkPreset": {
-        radius: { tl: 10, tr: 10, br: 0, bl: 0 },
-      },
-      "gtk3Preset": {
-        radius: { tl: 10, tr: 10, br: 11, bl: 11 },
-      },
-      "@qtPreset": {
-        radius: { tl: 18, tr: 18, br: 0, bl: 0 },
-      },
-      "@chromePreset": {
-        radius: { tl: 12, tr: 12, br: 0, bl: 0 },
-      },
-      "@zedPreset": {
-        margins: { right: -1, bottom: -1 },
-        radius: { tl: 14, tr: 14, br: 10, bl: 10 },
-      },
-      //// Adw
-      "regex.class:^org.gnome.*": "@adwPreset",
-      // "regex.class:^org.freedesktop.*": "@adwPreset",
-      "class:com.github.tchx84.Flatseal": "@adwPreset",
-      "class:simple-scan": "@adwPreset",
-      "class:re.sonny.Workbench": "@adwPreset",
-      "class:com.mattjakeman.ExtensionManager": "@adwPreset",
-      "class:com.mitchellh.ghostty": "@adwPreset",
-      "class:io.github.htkhiem.Euphonica": "@adwPreset",
-      "class:io.bassi.Amberol": "@adwPreset",
-      "class:ca.edestcroix.Recordbox": "@adwPreset",
-
-      //// Gtk
-      "class:org.gnome.Terminal": "@gtkPreset",
-      "class:org.gnome.seahorse.Application": "@gtkPreset",
-      "class:org.gnome.Connections": "@gtkPreset",
-      "class:gnome-power-statistics": "@gtkPreset",
-      "class:org.gnome.PowerStats": "@gtkPreset",
-      "class:firefox": "@gtkPreset",
-      "class:firefox-esr": "@gtkPreset",
-      "class:thunderbird": "@gtkPreset",
-      "class:thunderbird-esr": "@gtkPreset",
-      "class:io.ente.auth": "@gtkPreset",
-      "class:dconf-editor": "@gtkPreset",
-      "class:org.gimp.GIMP": "@gtkPreset",
-      "class:gimp": "@gtkPreset",
-      "class:org.inkscape.Inkscape": "@gtkPreset",
-      "class:system-config-printer": "@gtkPreset",
-      "class:libreoffice-calc": "@gtkPreset",
-      "class:libreoffice-writer": "@gtkPreset",
-      "class:libreoffice-impress": "@gtkPreset",
-      "class:libreoffice-draw": "@gtkPreset",
-      "class:libreoffice-base": "@gtkPreset",
-      "class:cheese": "@gtkPreset",
-      "class:solaar": "@gtkPreset",
-      "class:com.github.xournalpp.xournalpp": "@gtkPreset",
-      "class:blender": "@gtkPreset",
-      "class:fr.handbrake.ghb": "@gtkPreset",
-      "class:com.dec05eba.gpu_screen_recorder": "@gtkPreset",
-      "class:org.pulseaudio.pavucontrol": "@gtkPreset",
-
-      //// Gtk3
-      "class:lollypop": "@gtk3Preset",
-      "class:geary": "@gtk3Preset",
-      "class:gnome-disks": "@gtk3Preset",
-      // The newer versions use md.Obsidian and curved corners.
-      "class:md.Obsidian": "@gtk3Preset",
-
-      //// Chrome
-      "regex.class:^google-chrome": "@chromePreset",
-      //// Chrome apps
-      "regex.class:^chrome-": "@chromePreset",
-      //// Chromium
-      "regex.class:^chromium": "@chromePreset",
-      //// Electron
-      "class:electron": "@zeroPreset",
-      "class:obsidian": "@zeroPreset",
-      "class:Chatgpt": "@zeroPreset",
-      "class:com.anthropic.Claude": "@zeroPreset",
-      "class:zulip": "@zeroPreset",
-      "class:slack": "@zeroPreset",
-      "class:code": "@zeroPreset",
-      "class:antigravity": "@zeroPreset",
-      "class:spotify": "@zeroPreset",
-      "class:discord": "@zeroPreset",
-      //// Other chormium browsers
-      "class:microsoft-edge": "@chromePreset",
-      "class:brave-browser": "@chromePreset",
-      "regex.class:^vivaldi": "@zeroPreset",
-      //// Qt
-      "class:vlc": "@qtPreset",
-      "class:krita": "@qtPreset",
-      "class:qpwgraph": "@qtPreset",
-      "class:org.kde.kdenlive": "@qtPreset",
-      "class:org.shotcut.Shotcut": "@qtPreset",
-      "class:com.obsproject.Studio": "@qtPreset",
-      "class:org.qbittorrent.qBittorrent": "@qtPreset",
-      "class:SQLiteStudio": "@qtPreset",
-      "class:btrfs-assistant": "@qtPreset",
-      "class:Jan": "@qtPreset",
-      "class:vimiv": "@qtPreset",
-      "class:DB Browser for SQLite": "@qtPreset",
-      //// Others
-      "class:dev.zed.Zed": "@zedPreset",
-      "class:mpv": "@zeroPreset",
-      "class:imv": "@zeroPreset",
-      //// Custom
-      "class:foot": "@zeroPreset",
-      "class:footclient": "@zeroPreset",
-      "class:kitty": "@zeroPreset",
-      "class:Alacritty": {
-        radius: { tl: 12, tr: 12 },
-      },
-      "class:xwaylandvideobridge": {
-        enabled: false,
-      },
-    };
-  }
-
-  _ensureDefaults() {
-    // Check if this is the first run by looking at config-version
-    const configVersion = this._settings.get_int("config-version");
-    const currentRevision = 12;
-
-    if (configVersion < currentRevision) {
-      this._logger.log(
-        "Config reset needed, saving default configuration values",
-      );
-
-      // Reset all keys to schema defaults.
-      const keys = this._settings.settings_schema.list_keys();
-      for (const key of keys) {
-        this._settings.reset(key);
-      }
-      // app-configs, we need it to be prepopulated for
-      // easy editing.
-      this._settings.set_string(
-        "app-configs",
-        JSON.stringify(this._fallbackAppConfig()),
-      );
-
-      // Update config version to indicate defaults have been saved
-      this._settings.set_int("config-version", currentRevision);
-
-      this._logger.log("Default configuration values saved to dconf");
-    }
+    this._regexConfigs = getOrderedRegexConfigs(
+      this.appConfigs,
+      rules,
+      baseConfigs,
+    );
   }
 
   _getDefaultActiveOrAccentColor() {
@@ -343,34 +231,10 @@ export class ConfigManager {
   }
 
   _resolvePresets(rawConfigs = {}) {
-    // First, extract all presets (keys starting with @)
-    const presets = {};
-    const appConfigs = {};
-
-    for (const [key, value] of Object.entries(rawConfigs)) {
-      if (key.startsWith("@")) {
-        presets[key] = value;
-      } else {
-        appConfigs[key] = value;
-      }
-    }
-
-    // Resolve preset references in app configs
     const resolvedConfigs = {};
-    for (const [key, value] of Object.entries(appConfigs)) {
-      if (typeof value === "string" && value.startsWith("@")) {
-        // This is a preset reference
-        const presetConfig = presets[value];
-        if (presetConfig !== undefined) {
-          resolvedConfigs[key] = presetConfig;
-        } else {
-          this._logger.warn(`Unknown preset reference: ${value} for ${key}`);
-          resolvedConfigs[key] = {};
-        }
-      } else {
-        // Regular config object
-        resolvedConfigs[key] = value;
-      }
+    for (const [key, value] of Object.entries(rawConfigs)) {
+      if (key.startsWith("@")) continue;
+      resolvedConfigs[key] = resolveConfigValue(value, rawConfigs);
     }
 
     return resolvedConfigs;
@@ -387,19 +251,18 @@ export class ConfigManager {
     if (exactMatch) return exactMatch;
 
     // Try pattern matches
-    for (const [key, config] of Object.entries(this.appConfigs)) {
-      if (!key.startsWith("regex.")) continue;
+    for (const [key, config] of this._regexConfigs) {
       if (
         key.startsWith("regex.app:") &&
         appId &&
-        this._matches(appId, key.slice(11))
+        this._matches(appId, key.slice("regex.app:".length))
       ) {
         return config;
       }
       if (
         key.startsWith("regex.class:") &&
         wmClass &&
-        this._matches(wmClass, key.slice(13))
+        this._matches(wmClass, key.slice("regex.class:".length))
       ) {
         return config;
       }
@@ -408,49 +271,17 @@ export class ConfigManager {
   }
 
   _matches(text, pattern) {
-    try {
-      return new RegExp(pattern, "i").test(text);
-    } catch {
-      return false; // Invalid regex patterns don"t match
-    }
+    return new RegExp(pattern, "i").test(text);
   }
 
-  normalizeConfig(config = {}, globalConfig = {}) {
-    const radiusEnabled = globalConfig.radiusEnabled ?? true;
+  _normalizeConfig(config = {}) {
     return {
       ...config,
-      margins: this.normalizeMargins(config.margins),
-      radius: radiusEnabled
-        ? this.normalizeRadius(config.radius)
+      width: normalizeWidth(config.width),
+      margins: normalizeMargins(config.margins),
+      radius: this.globalConfig.radiusEnabled
+        ? normalizeRadius(config.radius)
         : { tl: 0, tr: 0, br: 0, bl: 0 },
-    };
-  }
-
-  normalizeMargins(margins) {
-    if (typeof margins === "number") {
-      const value = margins | 0;
-      return { top: value, right: value, bottom: value, left: value };
-    }
-
-    return {
-      top: (margins?.top ?? 0) | 0,
-      right: (margins?.right ?? 0) | 0,
-      bottom: (margins?.bottom ?? 0) | 0,
-      left: (margins?.left ?? 0) | 0,
-    };
-  }
-
-  normalizeRadius(radius) {
-    if (typeof radius === "number") {
-      const value = Math.max(0, radius | 0);
-      return { tl: value, tr: value, br: value, bl: value };
-    }
-
-    return {
-      tl: Math.max(0, (radius?.tl ?? 0) | 0),
-      tr: Math.max(0, (radius?.tr ?? 0) | 0),
-      br: Math.max(0, (radius?.br ?? 0) | 0),
-      bl: Math.max(0, (radius?.bl ?? 0) | 0),
     };
   }
 }
