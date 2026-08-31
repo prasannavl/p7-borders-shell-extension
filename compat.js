@@ -4,13 +4,12 @@
 // GNOME constantly has breaking changes and it's not fun to keep up with these
 // changes. This file abstracts away some of these differences.
 
-import Meta from "gi://Meta";
-
 export function getMaximizeState(metaWindow) {
   const flags = metaWindow.get_maximize_flags?.() ?? 0;
-  const hFlag = Meta.MaximizeFlags?.HORIZONTAL ?? 1;
-  const vFlag = Meta.MaximizeFlags?.VERTICAL ?? 2;
-  const bothFlag = Meta.MaximizeFlags?.BOTH ?? hFlag | vFlag;
+  // Meta.MaximizeFlags values are stable across the supported Shell versions.
+  const hFlag = 1;
+  const vFlag = 2;
+  const bothFlag = hFlag | vFlag;
 
   let horizontal = (flags & hFlag) !== 0;
   let vertical = (flags & vFlag) !== 0;

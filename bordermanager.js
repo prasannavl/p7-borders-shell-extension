@@ -1,128 +1,14 @@
-import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { computeBorderState } from "./borderstate.js";
 import { applyBorderState, getWindowState } from "./compat.js";
 import { ConfigManager } from "./config.js";
-
-// We do these live GObject checks as gnome shell can lose it's actors
-// without us being notified correctly. Often happens in cases
-// where gfx card bugs, etc. Gfx resets might happen and actors are lost.
-// Some case the shell recovers, some case it might not, but still doing
-// these checks avoid adding extra red-herring and makes things
-// more graceful.
-const isLiveObject = (object) => {
-  if (!object) return false;
-  try {
-    // If is_destroyed is not present, assume live
-    if (typeof object.is_destroyed !== "function") return true;
-    // If we have, it depend on it's result
-    return !object.is_destroyed();
-  } catch {
-    // GJS throws if the underlying GObject has been disposed.
-    return false;
-  }
-};
-
-class PendingTracker {
-  constructor(manager) {
-    this._manager = manager;
-    this.tracks = new Map();
-    this.syncs = new Map();
-  }
-
-  isTracked(metaWindow) {
-    return this.tracks.has(metaWindow);
-  }
-
-  _track(metaWindow, entries) {
-    const token = {};
-    const objects = [];
-    for (const { object, signal, handler } of entries) {
-      object.connectObject(signal, handler, token);
-      objects.push(object);
-    }
-    this.tracks.set(metaWindow, { objects, token });
-  }
-
-  addTrack(metaWindow, entries) {
-    if (this.isTracked(metaWindow)) return true;
-    this._track(metaWindow, [
-      ...entries,
-      {
-        object: metaWindow,
-        signal: "unmanaged",
-        handler: () => this.clearTrack(metaWindow),
-      },
-    ]);
-    return true;
-  }
-
-  clearTrack(metaWindow) {
-    const pending = this.tracks.get(metaWindow);
-    if (!pending) return;
-    const { objects, token } = pending;
-    for (const object of objects) {
-      if (isLiveObject(object)) object.disconnectObject(token);
-    }
-    this.tracks.delete(metaWindow);
-  }
-
-  clearAllTracks() {
-    for (const [_win, pending] of this.tracks.entries()) {
-      const { objects, token } = pending;
-      for (const object of objects) {
-        if (isLiveObject(object)) object.disconnectObject(token);
-      }
-    }
-    this.tracks.clear();
-  }
-
-  addSync(metaWindow, windowData = null) {
-    this.clearSync(metaWindow);
-    const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-      this.syncs.delete(metaWindow);
-      const latestData = windowData ??
-        this._manager._windowData.get(metaWindow);
-      if (
-        isLiveObject(metaWindow) &&
-        this._manager.isLiveWindowData(latestData)
-      ) {
-        this._manager.syncBorder(metaWindow, latestData);
-      }
-      return GLib.SOURCE_REMOVE;
-    });
-    this.syncs.set(metaWindow, idleId);
-  }
-
-  clearSync(metaWindow) {
-    const pendingSyncId = this.syncs.get(metaWindow);
-    if (!pendingSyncId) return;
-    GLib.Source.remove(pendingSyncId);
-    this.syncs.delete(metaWindow);
-  }
-
-  clearAllSyncs() {
-    for (const [_win, syncId] of this.syncs.entries()) {
-      GLib.Source.remove(syncId);
-    }
-    this.syncs.clear();
-  }
-
-  clearForWindow(metaWindow) {
-    this.clearTrack(metaWindow);
-    this.clearSync(metaWindow);
-  }
-
-  clearAll() {
-    this.clearAllSyncs();
-    this.clearAllTracks();
-  }
-
-  trackCount() {
-    return this.tracks.size;
-  }
-}
+import {
+  isInterestingWindow,
+  isLiveObject,
+  PendingTracker,
+} from "./windowtracking.js";
 
 export class BorderManager {
   constructor(logger, settings) {
@@ -162,18 +48,7 @@ export class BorderManager {
   _isInterestingWindow(metaWindow) {
     const modalEnabled = this.configManager?.globalConfig?.modalEnabled ??
       false;
-
-    if (!modalEnabled) {
-      const transientFor = metaWindow.get_transient_for?.();
-      if (transientFor) return false;
-      if (metaWindow.is_attached_dialog?.()) return false;
-    }
-
-    const type = metaWindow.get_window_type();
-
-    const WindowType = Meta.WindowType;
-    if (type === WindowType.MODAL_DIALOG) return modalEnabled;
-    return type === WindowType.NORMAL || type === WindowType.DIALOG;
+    return isInterestingWindow(metaWindow, modalEnabled, Meta.WindowType);
   }
 
   _resyncAll() {
@@ -230,6 +105,7 @@ export class BorderManager {
   }
 
   _queueUpdate(metaWindow, windowData = null) {
+    if (!metaWindow) return;
     // Schedule sync on next idle cycle for smooth updates
     this._pending.addSync(metaWindow, windowData);
   }
@@ -503,109 +379,4 @@ export class BorderManager {
     this._pending.clearAll();
     this._untrackAllWindows();
   }
-}
-
-function computeBorderState(windowState, config) {
-  const {
-    box,
-    frame,
-    buffer,
-    workarea,
-    isFullscreen,
-    maximize,
-    isFocused,
-  } = windowState;
-  const EDGE_EPS = 2;
-  const ZERO_RADIUS = { tl: 0, tr: 0, br: 0, bl: 0 };
-  const { margins, radius, width: borderWidth } = config;
-  const radiusEnabled = !!(radius.tl || radius.tr || radius.br || radius.bl);
-
-  if (
-    !workarea ||
-    isFullscreen ||
-    maximize.full ||
-    (!config.maximizedBorder && maximize.any) ||
-    !borderWidth ||
-    !config.enabled
-  ) {
-    return { visible: false };
-  }
-
-  // We calculate the effective frame so that any additional shadows
-  // that's drawn by the actors aren't counted for the border.
-  const effectiveFrame = buffer
-    ? {
-      x: frame.x - buffer.x,
-      y: frame.y - buffer.y,
-      width: frame.width,
-      height: frame.height,
-    }
-    : {
-      x: 0,
-      y: 0,
-      width: box.width,
-      height: box.height,
-    };
-
-  const { width, height } = effectiveFrame;
-  if (width <= 0 || height <= 0) {
-    return { visible: false };
-  }
-
-  const edgeThreshold = Math.max(EDGE_EPS, borderWidth);
-  const edges = {
-    left: Math.abs(frame.x - workarea.x) <= edgeThreshold,
-    right: Math.abs(frame.x + frame.width - (workarea.x + workarea.width)) <=
-      edgeThreshold,
-    top: Math.abs(frame.y - workarea.y) <= edgeThreshold,
-    bottom: Math.abs(frame.y + frame.height - (workarea.y + workarea.height)) <=
-      edgeThreshold,
-  };
-
-  const borderWidths = {
-    top: edges.top ? 0 : borderWidth,
-    right: edges.right ? 0 : borderWidth,
-    bottom: edges.bottom ? 0 : borderWidth,
-    left: edges.left ? 0 : borderWidth,
-  };
-
-  const effRadius = !radiusEnabled || maximize.any ? ZERO_RADIUS : {
-    tl: edges.top && edges.left ? 0 : radius.tl,
-    tr: edges.top && edges.right ? 0 : radius.tr,
-    br: edges.bottom && edges.right ? 0 : radius.br,
-    bl: edges.bottom && edges.left ? 0 : radius.bl,
-  };
-
-  const pos = {
-    x: effectiveFrame.x - margins.left - borderWidths.left,
-    y: effectiveFrame.y - margins.top - borderWidths.top,
-  };
-
-  const size = {
-    width: Math.max(
-      1,
-      width +
-        margins.left +
-        margins.right +
-        borderWidths.left +
-        borderWidths.right,
-    ),
-    height: Math.max(
-      1,
-      height +
-        margins.top +
-        margins.bottom +
-        borderWidths.top +
-        borderWidths.bottom,
-    ),
-  };
-
-  return {
-    visible: true,
-    borderWidths,
-    borderColor: isFocused ? config.activeColor : config.inactiveColor,
-    radius: effRadius,
-    pos,
-    size,
-  };
 }
