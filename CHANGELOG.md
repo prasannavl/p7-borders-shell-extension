@@ -2,6 +2,22 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [47] - 2026-08-31
+
+- Store user app configuration as compact rules layered over shipped defaults;
+  version 47 starts this layer clean instead of retaining or migrating the
+  monolithic app configuration from earlier releases, while retaining an
+  independent storage-format version for future breaking migrations.
+- Allow the shipped configuration layer to be disabled completely while keeping
+  the same independent user rules.
+- Redesign preferences with compact quick-add editors, app-key search, separate
+  user and effective JSON views, and transactional full-config import/export.
+- Correct edge-aware margins and corner radii, and keep custom regex configs
+  ahead of modified shipped patterns.
+- Add automated coverage for configuration storage, border geometry, window
+  lifecycle, schemas, and release packaging, plus standalone GJS compatibility
+  and preferences module-load checks with every supported Shell version.
+
 ## [46] - 2026-08-30
 
 - Add a GTK 3 preset and more application defaults.
