@@ -17,6 +17,7 @@
         glib
         gnumake
         gnome-shell
+        libadwaita
         unzip
         zip
       ];
@@ -76,9 +77,15 @@
       formatterPkgs = formatterPkgsFor pkgs;
     in {
       default = pkgs.mkShell {
-        packages = commonPackages ++ formatterPkgs;
+        packages = commonPackages ++ formatterPkgs ++ [pkgs.gjs];
+        shellHook = ''
+          shellGiPath=$(nix-store -qR ${pkgs.gnome-shell} | while IFS= read -r dependency; do
+            find "$dependency/lib" -maxdepth 3 -type f -name '*.typelib' -printf '%h\n' 2>/dev/null
+          done | sort -u | paste -sd:)
+          export GI_TYPELIB_PATH="$shellGiPath"
+          export GNOME_SHELL_EXTENSIONS_RESOURCE=${pkgs.gnome-shell}/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource
+        '';
       };
     });
   };
 }
-
