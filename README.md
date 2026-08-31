@@ -84,7 +84,7 @@ Settings are stored in GSettings schema `org.gnome.shell.extensions.p7-borders`.
 
 ### Global defaults
 
-Global defaults apply when no app-specific override exists:
+Global defaults apply when no app-specific rule exists:
 
 - `default-enabled` (bool)
 - `default-width` (int)
@@ -95,10 +95,24 @@ Global defaults apply when no app-specific override exists:
 - `default-maximized-borders` (bool)
 - `radius-enabled` (bool)
 - `modal-enabled` (bool)
+- `verbose-logging` (bool)
+- `use-shipped-configs` (bool)
 
 ### App configs (JSON)
 
-App configs live in the `app-configs` JSON setting. Keys match by:
+The extension keeps its shipped config as a read-only base and stores only user
+changes in the `rules` JSON setting. This means new shipped apps and preset
+improvements appear on upgrade without replacing custom settings. Preferences
+provides both the editable **User Rules** JSON and the read-only **Effective
+Config** produced after merging both layers. The effective config can also be
+imported or exported as a JSON file.
+
+Disable **Use shipped app configs** on the Global page to evaluate the same user
+rules against an empty base. In this mode, shipped presets and app entries are
+completely excluded; only your non-null rules become effective. Switching the
+option back on restores the shipped base without rewriting your rules.
+
+Keys match by:
 
 - `app:ID` for `gtk-application-id`
 - `class:WM_CLASS` for `WM_CLASS`
@@ -113,17 +127,18 @@ Each config can define:
 - `radius` (number or `{ tl, tr, br, bl }`)
 - `activeColor` / `inactiveColor` (string)
 
-Example `app-configs` JSON:
+Rule objects merge recursively with their shipped values. `null` removes a
+nested field, while a top-level `null` suppresses a shipped app or preset.
+Custom keys are added normally. Example `rules` JSON:
 
 ```json
 {
   "@gtkPreset": {
-    "margins": { "top": -22, "right": -25, "bottom": -28, "left": -25 },
-    "radius": { "tl": 10, "tr": 10, "br": 0, "bl": 0 }
+    "radius": { "tl": 12, "tr": 12 }
   },
-  "@default": { "width": 3 },
-  "class:org.gnome.Terminal": "@gtkPreset",
-  "class:foot": { "margins": { "top": 27 } }
+  "class:org.gnome.Terminal": { "width": 4 },
+  "class:foot": null,
+  "class:my-terminal": { "margins": { "top": 27 } }
 }
 ```
 
@@ -132,6 +147,10 @@ Example `app-configs` JSON:
 Useful Make targets:
 
 - `make lint` - run linters
+- `make test` - run configuration, border policy, GNOME compatibility,
+  GSettings, metadata, schema, and package tests
+- `make test-versions` - run standalone GJS configuration and compatibility
+  tests with GNOME Shell 45 through 50 dependencies
 - `make fmt` - run formatters
 - `make schemas` - compile GSettings schema
 - `make pack` - build zip into `dist/`
@@ -145,7 +164,7 @@ Useful Make targets:
 ### My application does not have borders. Why?
 
 This default for this extension is to use an opt-in model (Can be changed). Only
-apps that match an entry in `app-configs` get borders, so anything not in the
+apps that match an effective app config get borders, so anything not in the
 whitelist stays unmodified. This avoids unintended borders on apps where
 client-side decorations or insets would look wrong.
 
@@ -164,8 +183,10 @@ windows.
 
 ### How do I add config so that an application gets borders?
 
-Add an entry to the `app-configs` JSON keyed by `gtk-application-id` or
-`WM_CLASS`, then set margins and radius as needed. Example:
+Use **Quick Add** on the App Configs preferences page, choose the identifier
+type, enter its value, and press Enter. You can then expand the new row to
+select a preset or set margins and radius. The same entries can be written in
+the User Rules JSON, keyed by `gtk-application-id` or `WM_CLASS`. Example:
 
 ```json
 {
@@ -197,7 +218,7 @@ follow known toolkit standards. This for example is applied for `@gtkPreset`,
 ### Why are my Chrome (or Chromium, Chrome Apps) borders off?
 
 The current default preset works with Chrome's native and Qt mode. If you use
-Gtk, then the border preset needs switching to `chromeGtkPreset` for both chrome
+Gtk, then the border preset needs switching to `@gtkPreset` for both chrome
 and chrome apps. Chrome adds it's own borders and doesn't have consistent
 borders across all 3 modes.
 
@@ -214,9 +235,9 @@ Switch to:
 
 ```
 # default 
-"regex.class:^google-chrome*": "@chromeGtkPreset",
-"regex.class:^chrome-*": "@chromeGtkPreset",
-"regex.class:^chromium*": "@chromeGtkPreset",
+"regex.class:^google-chrome*": "@gtkPreset",
+"regex.class:^chrome-*": "@gtkPreset",
+"regex.class:^chromium*": "@gtkPreset",
 ```
 
 The preset is already provided. Simply use the extension preferences to switch
@@ -230,5 +251,5 @@ You can reset all settings to their default values using the `dconf` command:
 dconf reset -f /org/gnome/shell/extensions/p7-borders/
 ```
 
-Disable and enable the extension and it will auto populate defaults into dconf
-again.
+Disable and enable the extension again. Shipped app defaults remain in the
+extension and are not written to dconf.
