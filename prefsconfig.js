@@ -47,6 +47,7 @@ export class PreferencesConfigStore {
 
   scheduleSave(source = null) {
     this._cancelScheduledSave();
+    this.rules = deriveAppConfigRules(this.configs, this.baseConfigs);
     this._saveSource = source;
     this._timeoutId = GLib.timeout_add(
       GLib.PRIORITY_DEFAULT,

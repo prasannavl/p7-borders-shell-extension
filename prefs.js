@@ -5,11 +5,11 @@ import Gtk from "gi://Gtk";
 
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
 import {
-  buildEffectiveAppConfigs,
   copyConfig,
   deriveAppConfigRules,
   findEquivalentConfigKey,
   getConfigMapError,
+  getRulesError,
   isConfigObject,
   normalizeMargins,
   normalizeRadius,
@@ -247,6 +247,14 @@ function clearGroupRows(group, rows) {
   rows.length = 0;
 }
 
+function getExpandedKeys(rowsByKey) {
+  return new Set(
+    Array.from(rowsByKey)
+      .filter(([, row]) => row.expanded)
+      .map(([key]) => key),
+  );
+}
+
 function createPresetModel(presets) {
   const model = new Gtk.StringList();
   model.append(CUSTOM_LABEL);
@@ -265,8 +273,7 @@ function getPresetConfig(rawConfigs, presetKey) {
   return isConfigObject(presetValue) ? presetValue : {};
 }
 
-function getConfigOrigin(configs, key, baseConfigs) {
-  const rules = deriveAppConfigRules(configs, baseConfigs);
+function getConfigOrigin(rules, key, baseConfigs) {
   if (!Object.hasOwn(rules, key)) return "Built-in";
   return Object.hasOwn(baseConfigs, key) ? "Modified" : "Custom";
 }
@@ -557,9 +564,6 @@ function buildConfigRow({
   saveConfigsDebounced,
   refreshList,
   presets,
-  allowPresetSelection,
-  allowRemove,
-  allowRename,
   removeConfig = (configKey, configs) => {
     delete configs[configKey];
     return true;
@@ -570,7 +574,6 @@ function buildConfigRow({
   validateKey = () => true,
   updateReferences = () => {},
 }) {
-  const saveConfigChange = saveConfigsDebounced;
   const isPreset = key.startsWith("@");
   let currentKey = key;
   const expander = new Adw.ExpanderRow({ title: currentKey });
@@ -586,20 +589,18 @@ function buildConfigRow({
     ? `Preset: ${initialValue}`
     : "Custom";
   expander.add_suffix(originLabel);
-  if (allowRemove) {
-    const removeButton = new Gtk.Button({
-      icon_name: "user-trash-symbolic",
-      tooltip_text: "Remove",
-      css_classes: ["destructive-action"],
-    });
-    removeButton.connect("clicked", () => {
-      const rawConfigs = getRawConfigs();
-      if (!removeConfig(currentKey, rawConfigs)) return;
-      saveConfigs();
-      refreshList();
-    });
-    expander.add_suffix(removeButton);
-  }
+  const removeButton = new Gtk.Button({
+    icon_name: "user-trash-symbolic",
+    tooltip_text: "Remove",
+    css_classes: ["destructive-action"],
+  });
+  removeButton.connect("clicked", () => {
+    const rawConfigs = getRawConfigs();
+    if (!removeConfig(currentKey, rawConfigs)) return;
+    saveConfigs();
+    refreshList();
+  });
+  expander.add_suffix(removeButton);
 
   let detailsBuilt = false;
   function buildDetails() {
@@ -610,54 +611,48 @@ function buildConfigRow({
       title: "Key",
       text: currentKey,
     });
-    if (allowRename) {
-      const renameButton = new Gtk.Button({
-        label: "Rename",
-        css_classes: ["flat"],
-      });
-      keyRow.add_suffix(renameButton);
-      keyRow.activatable_widget = keyRow;
+    const renameButton = new Gtk.Button({
+      label: "Rename",
+      css_classes: ["flat"],
+    });
+    keyRow.add_suffix(renameButton);
 
-      const tryRename = () => {
-        const nextKey = keyRow.text.trim();
-        if (!nextKey || nextKey === currentKey) {
-          keyRow.text = currentKey;
-          return;
-        }
-        if (!validateKey(nextKey)) {
-          keyRow.text = currentKey;
-          return;
-        }
-        const rawConfigs = getRawConfigs();
-        const equivalentKey = findEquivalentConfigKey(rawConfigs, nextKey);
-        if (equivalentKey && equivalentKey !== currentKey) {
-          keyRow.text = currentKey;
-          return;
-        }
-        rawConfigs[nextKey] = rawConfigs[currentKey];
-        delete rawConfigs[currentKey];
-        updateReferences(currentKey, nextKey, rawConfigs);
-        currentKey = nextKey;
-        expander.title = currentKey;
+    const tryRename = () => {
+      const nextKey = keyRow.text.trim();
+      if (!nextKey || nextKey === currentKey) {
         keyRow.text = currentKey;
-        saveConfigs();
-        updateOrigin();
-        refreshList();
-      };
+        return;
+      }
+      if (!validateKey(nextKey)) {
+        keyRow.text = currentKey;
+        return;
+      }
+      const rawConfigs = getRawConfigs();
+      const equivalentKey = findEquivalentConfigKey(rawConfigs, nextKey);
+      if (equivalentKey && equivalentKey !== currentKey) {
+        keyRow.text = currentKey;
+        return;
+      }
+      rawConfigs[nextKey] = rawConfigs[currentKey];
+      delete rawConfigs[currentKey];
+      updateReferences(currentKey, nextKey, rawConfigs);
+      currentKey = nextKey;
+      expander.title = currentKey;
+      keyRow.text = currentKey;
+      saveConfigs();
+      updateOrigin();
+      refreshList();
+    };
 
-      renameButton.connect("clicked", tryRename);
-      keyRow.connect("activate", tryRename);
-    } else {
-      keyRow.sensitive = false;
-    }
+    renameButton.connect("clicked", tryRename);
+    keyRow.connect("activate", tryRename);
     expander.add_row(keyRow);
 
-    const availablePresets = presets;
     let presetRow = null;
-    if (allowPresetSelection && !isPreset) {
+    if (!isPreset) {
       presetRow = new Adw.ComboRow({
         title: "Preset",
-        model: createPresetModel(availablePresets),
+        model: createPresetModel(presets),
       });
       expander.add_row(presetRow);
     }
@@ -686,7 +681,7 @@ function buildConfigRow({
     function setConfigValue(updater) {
       const config = ensureCustomConfig(false);
       updater(config);
-      saveConfigChange();
+      saveConfigsDebounced();
       updateOrigin();
     }
 
@@ -697,28 +692,26 @@ function buildConfigRow({
       updateOrigin();
     }
 
-    const applyConfig = (config) => editor.applyConfig(config);
-
     function setPresetSelection() {
       const rawConfigs = getRawConfigs();
       if (isPreset) {
         isCustom = true;
         editor.setCustomSensitive(true);
-        applyConfig(
+        editor.applyConfig(
           isConfigObject(rawConfigs[currentKey]) ? rawConfigs[currentKey] : {},
         );
         return;
       }
       const value = rawConfigs[currentKey];
       if (typeof value === "string" && value.startsWith("@")) {
-        const index = availablePresets.indexOf(value);
+        const index = presets.indexOf(value);
         updating = true;
         presetRow.selected = index >= 0 ? index + 1 : 0;
         updating = false;
         expander.subtitle = `Preset: ${value}`;
         isCustom = false;
         editor.setCustomSensitive(false);
-        applyConfig(getPresetConfig(rawConfigs, value));
+        editor.applyConfig(getPresetConfig(rawConfigs, value));
       } else {
         updating = true;
         presetRow.selected = 0;
@@ -726,7 +719,7 @@ function buildConfigRow({
         expander.subtitle = "Custom";
         isCustom = true;
         editor.setCustomSensitive(true);
-        applyConfig(isConfigObject(value) ? value : {});
+        editor.applyConfig(isConfigObject(value) ? value : {});
       }
     }
 
@@ -739,13 +732,13 @@ function buildConfigRow({
           isCustom = true;
           expander.subtitle = "Custom";
           editor.setCustomSensitive(true);
-          applyConfig(config);
+          editor.applyConfig(config);
           saveConfigs();
           updateOrigin();
           return;
         }
 
-        const preset = availablePresets[selected - 1];
+        const preset = presets[selected - 1];
         if (!preset) return;
         const rawConfigs = getRawConfigs();
         rawConfigs[currentKey] = preset;
@@ -754,7 +747,7 @@ function buildConfigRow({
         isCustom = false;
         expander.subtitle = `Preset: ${preset}`;
         editor.setCustomSensitive(false);
-        applyConfig(getPresetConfig(rawConfigs, preset));
+        editor.applyConfig(getPresetConfig(rawConfigs, preset));
       });
     }
 
@@ -857,6 +850,7 @@ function buildConfigsPage(window, configStore) {
   }
 
   function refreshList() {
+    const expandedKeys = getExpandedKeys(rowsByKey);
     clearGroupRows(listGroup, listRows);
     rowsByKey.clear();
 
@@ -883,11 +877,12 @@ function buildConfigsPage(window, configStore) {
         saveConfigsDebounced,
         refreshList,
         presets,
-        allowPresetSelection: true,
-        allowRemove: true,
-        allowRename: true,
         getOrigin: (configKey) =>
-          getConfigOrigin(rawConfigs, configKey, configStore.baseConfigs),
+          getConfigOrigin(
+            configStore.rules,
+            configKey,
+            configStore.baseConfigs,
+          ),
         getResetValue: (configKey) =>
           getBaseConfig(configKey, configStore.baseConfigs),
         resetTitle: getResetTitle(
@@ -900,6 +895,7 @@ function buildConfigsPage(window, configStore) {
       listGroup.add(row);
       listRows.push(row);
       rowsByKey.set(key, row);
+      row.expanded = expandedKeys.has(key);
     }
 
     applyFilter();
@@ -1009,6 +1005,7 @@ function buildPresetsPage(window, configStore) {
   }
 
   function refreshList() {
+    const expandedKeys = getExpandedKeys(rowsByKey);
     clearGroupRows(listGroup, listRows);
     rowsByKey.clear();
 
@@ -1035,12 +1032,13 @@ function buildPresetsPage(window, configStore) {
         saveConfigsDebounced,
         refreshList,
         presets: [],
-        allowPresetSelection: false,
-        allowRemove: true,
-        allowRename: true,
         removeConfig: removePreset,
         getOrigin: (presetKey) =>
-          getConfigOrigin(rawConfigs, presetKey, configStore.baseConfigs),
+          getConfigOrigin(
+            configStore.rules,
+            presetKey,
+            configStore.baseConfigs,
+          ),
         getResetValue: (presetKey) =>
           getBaseConfig(presetKey, configStore.baseConfigs),
         resetTitle: getResetTitle(
@@ -1054,6 +1052,7 @@ function buildPresetsPage(window, configStore) {
       listGroup.add(row);
       listRows.push(row);
       rowsByKey.set(key, row);
+      row.expanded = expandedKeys.has(key);
     }
 
     updateAddButtonState();
@@ -1144,19 +1143,9 @@ function buildRawConfigPage(window, configStore) {
       showToast(window, "Rules must be a JSON object");
       return;
     }
-    const validationError = getConfigMapError(parsed, {
-      allowTombstones: true,
-      validateReferences: false,
-    });
+    const validationError = getRulesError(parsed, configStore.baseConfigs);
     if (validationError) {
       showToast(window, validationError);
-      return;
-    }
-    const effectiveError = getConfigMapError(
-      buildEffectiveAppConfigs(parsed, configStore.baseConfigs),
-    );
-    if (effectiveError) {
-      showToast(window, effectiveError);
       return;
     }
     configStore.replaceRules(parsed, RAW_CONFIG_SOURCE);

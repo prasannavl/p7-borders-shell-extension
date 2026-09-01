@@ -180,6 +180,12 @@ export function normalizeRadius(radius) {
   return normalizeNumberMap(radius, RADIUS_KEYS, 0);
 }
 
+export function isSafeCssColor(value) {
+  return typeof value === "string" &&
+    value.trim().length > 0 &&
+    !/[;{}\r\n]/.test(value);
+}
+
 export function parseConfigJson(raw) {
   if (!raw) return {};
   try {
@@ -275,9 +281,9 @@ function getConfigValueError(key, config, allowNulls) {
     if (
       hasOwn(config, field) &&
       !nullable(config[field]) &&
-      (typeof config[field] !== "string" || !config[field])
+      !isSafeCssColor(config[field])
     ) {
-      return `${key}.${field} must be a non-empty string`;
+      return `${key}.${field} must be a single CSS color value`;
     }
   }
 
@@ -399,25 +405,54 @@ function addEffectiveConfigs(effective, baseConfigs, rules, presets) {
   for (const [key, value] of Object.entries(baseConfigs)) {
     if (!belongs(key)) continue;
     if (!hasOwn(rules, key)) {
-      effective[key] = copyConfig(value);
+      addEffectiveConfig(effective, key, value, presets);
       continue;
     }
 
     const rule = rules[key];
     if (rule === null) continue;
-    effective[key] = isConfigObject(rule)
+    const merged = isConfigObject(rule)
       ? mergePatch(
         presets ? value : resolveConfigValue(value, effective),
         rule,
       )
-      : copyConfig(rule);
+      : rule;
+    addEffectiveConfig(effective, key, merged, presets);
   }
   for (const [key, value] of Object.entries(rules)) {
     if (!belongs(key) || hasOwn(baseConfigs, key) || value === null) {
       continue;
     }
-    effective[key] = copyConfig(value);
+    addEffectiveConfig(effective, key, value, presets);
   }
+}
+
+function addEffectiveConfig(effective, key, value, isPreset) {
+  if (isPreset) {
+    if (isConfigObject(value)) effective[key] = mergePatch({}, value);
+    return;
+  }
+  if (typeof value === "string") {
+    if (isConfigObject(effective[value])) effective[key] = value;
+    return;
+  }
+  if (isConfigObject(value)) effective[key] = mergePatch({}, value);
+}
+
+export function getRulesError(rules, baseConfigs = BASE_APP_CONFIGS) {
+  const error = getConfigMapError(rules, {
+    allowTombstones: true,
+    validateReferences: false,
+  });
+  if (error) return error;
+
+  const effective = buildEffectiveAppConfigs(rules, baseConfigs);
+  for (const [key, value] of Object.entries(rules)) {
+    if (typeof value === "string" && !isConfigObject(effective[value])) {
+      return `Unknown preset reference ${value} in ${key}`;
+    }
+  }
+  return null;
 }
 
 export function deriveAppConfigRules(
@@ -429,7 +464,12 @@ export function deriveAppConfigRules(
 
   for (const [key, baseValue] of Object.entries(baseConfigs)) {
     if (!hasOwn(desired, key)) {
-      rules[key] = null;
+      if (
+        typeof baseValue !== "string" ||
+        hasOwn(desired, baseValue)
+      ) {
+        rules[key] = null;
+      }
       continue;
     }
 

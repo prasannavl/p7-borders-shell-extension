@@ -5,8 +5,10 @@ import {
   BASE_APP_CONFIGS,
   buildEffectiveAppConfigs,
   canonicalizeConfigKey,
+  findEquivalentConfigKey,
   getConfigMapError,
   getOrderedRegexConfigs,
+  isSafeCssColor,
   normalizeMargins,
   normalizeRadius,
   normalizeWidth,
@@ -17,6 +19,12 @@ import {
 
 export const CONFIG_VERSION = 13;
 export const USE_SHIPPED_CONFIGS_KEY = "use-shipped-configs";
+const DEFAULT_ACTIVE_COLOR = "rgba(51, 153, 230, 0.4)";
+const DEFAULT_INACTIVE_COLOR = "rgba(102, 102, 102, 0.2)";
+
+function safeColor(value, fallback) {
+  return isSafeCssColor(value) ? value.trim() : fallback;
+}
 
 export function getSettingsBaseConfigs(settings) {
   return settings.get_boolean(USE_SHIPPED_CONFIGS_KEY) ? BASE_APP_CONFIGS : {};
@@ -24,6 +32,8 @@ export function getSettingsBaseConfigs(settings) {
 
 export function ensureConfigVersion(settings) {
   const storedVersion = settings.get_int("config-version");
+  // Persist even when the schema default matches. A future default bump must
+  // still be able to identify existing installs that need migration.
   if (
     settings.get_user_value("config-version") === null ||
     storedVersion < CONFIG_VERSION
@@ -46,20 +56,31 @@ export function setSettingsRules(settings, rules) {
 
 export function readSettingsAppConfigs(settings, logger = null) {
   const baseConfigs = getSettingsBaseConfigs(settings);
-  let rules = getSettingsRules(settings);
-  let error = getConfigMapError(rules, {
-    allowTombstones: true,
-    validateReferences: false,
-  });
-  if (!error) {
-    const configs = buildEffectiveAppConfigs(rules, baseConfigs);
-    error = getConfigMapError(configs);
-    if (!error) return { configs, rules, baseConfigs };
+  const rules = {};
+  for (const [key, value] of Object.entries(getSettingsRules(settings))) {
+    const equivalentKey = findEquivalentConfigKey(rules, key);
+    const error = equivalentKey
+      ? `Duplicate exact-match config keys: ${equivalentKey} and ${key}`
+      : getConfigMapError({ [key]: value }, {
+        allowTombstones: true,
+        validateReferences: false,
+      });
+    if (error) {
+      logger?.warn(`Ignoring invalid rule: ${error}`);
+    } else {
+      rules[key] = value;
+    }
   }
 
-  logger?.warn(`Ignoring invalid rules: ${error}`);
-  rules = {};
-  const configs = buildEffectiveAppConfigs({}, baseConfigs);
+  const configs = buildEffectiveAppConfigs(rules, baseConfigs);
+  for (const [key, value] of Object.entries(rules)) {
+    if (typeof value === "string" && !Object.hasOwn(configs, key)) {
+      logger?.warn(
+        `Ignoring invalid rule: Unknown preset reference ${value} in ${key}`,
+      );
+      delete rules[key];
+    }
+  }
   return { configs, rules, baseConfigs };
 }
 
@@ -111,7 +132,10 @@ export class ConfigManager {
     // Update default config from the current settings
     const defaults = {
       activeColor: this._getDefaultActiveOrAccentColor(),
-      inactiveColor: this._settings.get_string("default-inactive-color"),
+      inactiveColor: safeColor(
+        this._settings.get_string("default-inactive-color"),
+        DEFAULT_INACTIVE_COLOR,
+      ),
       width: this._settings.get_int("default-width"),
       margins: this._settings.get_int("default-margins"),
       radius: this._settings.get_int("default-radius"),
@@ -152,17 +176,19 @@ export class ConfigManager {
       this.appConfigs,
       rules,
       baseConfigs,
-    );
+    ).map(([key, config]) => ({
+      target: key.startsWith("regex.app:") ? "app" : "class",
+      matcher: new RegExp(key.slice(key.indexOf(":") + 1), "i"),
+      config,
+    }));
   }
 
   _getDefaultActiveOrAccentColor() {
     // Custom color that works well for all dark and light themes
-    const defaultAccent = "rgba(51, 153, 230, 0.4)";
-
     // Check if we should use auto accent color
     const activeColor = this._settings.get_string("default-active-color");
     if (activeColor !== "auto") {
-      return activeColor;
+      return safeColor(activeColor, DEFAULT_ACTIVE_COLOR);
     }
 
     // 'accent-color' was introduced in GNOME 47.
@@ -183,10 +209,10 @@ export class ConfigManager {
         slate: "rgba(99, 104, 128, 0.4)",
       };
 
-      return accentColorMap[accentColor] || defaultAccent;
+      return accentColorMap[accentColor] || DEFAULT_ACTIVE_COLOR;
     }
 
-    return defaultAccent;
+    return DEFAULT_ACTIVE_COLOR;
   }
 
   // --- GSettings change handling -----------------------------------------
@@ -251,32 +277,18 @@ export class ConfigManager {
     if (exactMatch) return exactMatch;
 
     // Try pattern matches
-    for (const [key, config] of this._regexConfigs) {
-      if (
-        key.startsWith("regex.app:") &&
-        appId &&
-        this._matches(appId, key.slice("regex.app:".length))
-      ) {
-        return config;
-      }
-      if (
-        key.startsWith("regex.class:") &&
-        wmClass &&
-        this._matches(wmClass, key.slice("regex.class:".length))
-      ) {
-        return config;
-      }
+    for (const { target, matcher, config } of this._regexConfigs) {
+      const value = target === "app" ? appId : wmClass;
+      if (value && matcher.test(value)) return config;
     }
     return this.defaults;
-  }
-
-  _matches(text, pattern) {
-    return new RegExp(pattern, "i").test(text);
   }
 
   _normalizeConfig(config = {}) {
     return {
       ...config,
+      activeColor: safeColor(config.activeColor, DEFAULT_ACTIVE_COLOR),
+      inactiveColor: safeColor(config.inactiveColor, DEFAULT_INACTIVE_COLOR),
       width: normalizeWidth(config.width),
       margins: normalizeMargins(config.margins),
       radius: this.globalConfig.radiusEnabled

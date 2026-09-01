@@ -47,6 +47,10 @@ test("one debounced save retains edits from every preferences page", () => {
   store.scheduleSave("apps");
   store.configs["@custom"] = { radius: 11 };
   store.scheduleSave("presets");
+  assertEquals(store.rules, {
+    "class:custom": { width: 7 },
+    "@custom": { radius: 11 },
+  });
   drainTimers();
 
   assertEquals(getSettingsRules(settings), {

@@ -216,12 +216,14 @@ test("user regexes run before broader shipped regexes", () => {
   });
 
   withManager((manager) => {
+    const matcher = manager._regexConfigs[0].matcher;
     assertEquals(
       manager.getConfigForWindow(
         metaWindow({ wmClass: "org.gnome.Console" }),
       ).width,
       12,
     );
+    assertEquals(manager._regexConfigs[0].matcher === matcher, true);
   });
 });
 
@@ -260,6 +262,7 @@ test("invalid field types are ignored before geometry is computed", () => {
   const warnings = [];
   setSettingsRules(settings, {
     "class:broken": { width: "wide", margins: { left: "far" } },
+    "class:valid": { width: 9 },
   });
   settings.set_int("default-width", 4);
 
@@ -267,6 +270,10 @@ test("invalid field types are ignored before geometry is computed", () => {
     assertEquals(
       manager.getConfigForWindow(metaWindow({ wmClass: "broken" })),
       manager.defaults,
+    );
+    assertEquals(
+      manager.getConfigForWindow(metaWindow({ wmClass: "valid" })).width,
+      9,
     );
     assertEquals(manager.defaults.width, 4);
   }, {
@@ -276,22 +283,63 @@ test("invalid field types are ignored before geometry is computed", () => {
     },
   });
   assertEquals(warnings, [
-    "Ignoring invalid rules: " +
+    "Ignoring invalid rule: " +
     "class:broken.width must be a non-negative integer",
   ]);
 });
 
-test("preferences and runtime share the validated effective config", () => {
+test("preferences and runtime retain valid rules beside invalid ones", () => {
   setSettingsRules(settings, {
     "class:broken": { width: "wide" },
+    "class:valid": { width: 8 },
   });
 
   const { configs, rules } = readSettingsAppConfigs(settings);
-  assertEquals(rules, {});
+  assertEquals(rules, { "class:valid": { width: 8 } });
   assertEquals(configs["class:broken"], undefined);
+  assertEquals(configs["class:valid"], { width: 8 });
   assertEquals(configs["class:firefox"], "@gtkPreset");
   assertEquals(getSettingsRules(settings), {
     "class:broken": { width: "wide" },
+    "class:valid": { width: 8 },
+  });
+});
+
+test("preset tombstones and custom nulls produce valid effective configs", () => {
+  setSettingsRules(settings, {
+    "@gtkPreset": null,
+    "class:custom": { width: null, radius: { tl: 7, tr: null } },
+  });
+
+  const { configs, rules } = readSettingsAppConfigs(settings);
+  assertEquals(rules, {
+    "@gtkPreset": null,
+    "class:custom": { width: null, radius: { tl: 7, tr: null } },
+  });
+  assertEquals(configs["@gtkPreset"], undefined);
+  assertEquals(configs["class:firefox"], undefined);
+  assertEquals(configs["class:custom"], { radius: { tl: 7 } });
+});
+
+test("unsafe color declarations cannot reach border styles", () => {
+  settings.set_string("default-active-color", "red; background: white");
+  settings.set_string("default-inactive-color", "blue\nbackground: white");
+  setSettingsRules(settings, {
+    "class:broken": { activeColor: "red; background: white" },
+    "class:valid": { activeColor: "orange" },
+  });
+
+  withManager((manager) => {
+    assertEquals(manager.defaults.activeColor, "rgba(51, 153, 230, 0.4)");
+    assertEquals(manager.defaults.inactiveColor, "rgba(102, 102, 102, 0.2)");
+    assertEquals(
+      manager.getConfigForWindow(metaWindow({ wmClass: "valid" })).activeColor,
+      "orange",
+    );
+    assertEquals(
+      manager.getConfigForWindow(metaWindow({ wmClass: "broken" })),
+      manager.defaults,
+    );
   });
 });
 
@@ -353,16 +401,21 @@ test("settings changes reload config and notify listeners", () => {
   });
 });
 
-test("unknown preset references reject the invalid rules layer", () => {
+test("unknown preset references do not discard valid rules", () => {
   const warnings = [];
   setSettingsRules(settings, {
     "class:broken": "@missing",
+    "class:valid": { width: 11 },
   });
 
   withManager((manager) => {
     assertEquals(
       manager.getConfigForWindow(metaWindow({ wmClass: "broken" })),
       manager.defaults,
+    );
+    assertEquals(
+      manager.getConfigForWindow(metaWindow({ wmClass: "valid" })).width,
+      11,
     );
   }, {
     log() {},
@@ -371,7 +424,7 @@ test("unknown preset references reject the invalid rules layer", () => {
     },
   });
   assertEquals(warnings, [
-    "Ignoring invalid rules: " +
+    "Ignoring invalid rule: " +
     "Unknown preset reference @missing in class:broken",
   ]);
 });

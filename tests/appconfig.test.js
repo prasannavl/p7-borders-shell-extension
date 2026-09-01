@@ -7,6 +7,7 @@ import {
   findEquivalentConfigKey,
   getConfigMapError,
   getOrderedRegexConfigs,
+  getRulesError,
   normalizeMargins,
   normalizeRadius,
   normalizeWidth,
@@ -85,6 +86,52 @@ Deno.test("nested null removes only the selected inherited field", () => {
         radius: { tl: 10, tr: 10, bl: 8 },
       },
     },
+  );
+});
+
+Deno.test("suppressing a preset also suppresses untouched references", () => {
+  const base = {
+    "@preset": { width: 3 },
+    "class:inherited": "@preset",
+    "class:overridden": "@preset",
+  };
+  const rules = {
+    "@preset": null,
+    "class:overridden": { width: 7 },
+  };
+  const effective = buildEffectiveAppConfigs(rules, base);
+  assertEquals(effective, { "class:overridden": { width: 7 } });
+  assertEquals(getConfigMapError(effective), null);
+  assertEquals(getRulesError(rules, base), null);
+  assertEquals(deriveAppConfigRules(effective, base), rules);
+});
+
+Deno.test("nested nulls are removed uniformly from custom entries", () => {
+  const effective = buildEffectiveAppConfigs({
+    "@custom": { width: null, radius: { tl: 4, tr: null } },
+    "class:custom": { width: null, margins: { top: 2, left: null } },
+  }, {});
+  assertEquals(
+    effective,
+    {
+      "@custom": { radius: { tl: 4 } },
+      "class:custom": { margins: { top: 2 } },
+    },
+  );
+  assertEquals(getConfigMapError(effective), null);
+});
+
+Deno.test("unknown preset references are omitted from effective configs", () => {
+  assertEquals(
+    buildEffectiveAppConfigs({
+      "class:broken": "@missing",
+      "class:valid": { width: 4 },
+    }, {}),
+    { "class:valid": { width: 4 } },
+  );
+  assertEquals(
+    getRulesError({ "class:broken": "@missing" }, {}),
+    "Unknown preset reference @missing in class:broken",
   );
 });
 
@@ -238,6 +285,10 @@ Deno.test("config map validation rejects malformed entries", () => {
   assertEquals(
     getConfigMapError({ "class:invalid": { raduis: 4 } }),
     "class:invalid.raduis is not valid",
+  );
+  assertEquals(
+    getConfigMapError({ "class:invalid": { activeColor: "red; width: 0" } }),
+    "class:invalid.activeColor must be a single CSS color value",
   );
   assertEquals(
     getConfigMapError({
