@@ -218,9 +218,9 @@ follow known toolkit standards. This for example is applied for `@gtkPreset`,
 ### Why are my Chrome (or Chromium, Chrome Apps) borders off?
 
 The current default preset works with Chrome's native and Qt mode. If you use
-Gtk, then the border preset needs switching to `@gtkPreset` for both chrome
-and chrome apps. Chrome adds it's own borders and doesn't have consistent
-borders across all 3 modes.
+Gtk, then the border preset needs switching to `@gtkPreset` for both chrome and
+chrome apps. Chrome adds it's own borders and doesn't have consistent borders
+across all 3 modes.
 
 The json config:
 

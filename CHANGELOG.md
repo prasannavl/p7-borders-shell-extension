@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [48] - 2026-09-01
+
+- Polish preferences spacing and action sizing, and arrange per-side margins
+  and corner radii in responsive two-column grids that remain readable at
+  narrow window sizes.
+
 ## [47] - 2026-08-31
 
 - Store user app configuration as compact rules layered over shipped defaults;
