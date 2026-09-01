@@ -111,12 +111,29 @@ function createSpinRow({ title, subtitle, lower, upper, step = 1 }) {
 }
 
 function createNumberStrip(title, labels, lower, upper) {
-  const row = new Adw.ActionRow({ title });
-  const box = new Gtk.Box({ spacing: 8, valign: Gtk.Align.CENTER });
+  const row = new Adw.PreferencesRow();
+  const layout = new Gtk.Box({
+    orientation: Gtk.Orientation.VERTICAL,
+    spacing: 8,
+    margin_top: 12,
+    margin_bottom: 12,
+    margin_start: 16,
+    margin_end: 16,
+  });
+  layout.append(new Gtk.Label({ label: title, xalign: 0 }));
+
+  const grid = new Gtk.Grid({
+    column_spacing: 16,
+    row_spacing: 8,
+    column_homogeneous: true,
+  });
   const controls = {};
 
-  for (const [key, label] of labels) {
-    const item = new Gtk.Box({ spacing: 4, valign: Gtk.Align.CENTER });
+  for (const [index, [key, label]] of labels.entries()) {
+    const item = new Gtk.Box({
+      spacing: 4,
+      valign: Gtk.Align.CENTER,
+    });
     item.append(new Gtk.Label({ label }));
     const control = new Gtk.SpinButton({
       adjustment: new Gtk.Adjustment({
@@ -129,10 +146,11 @@ function createNumberStrip(title, labels, lower, upper) {
     });
     controls[key] = control;
     item.append(control);
-    box.append(item);
+    grid.attach(item, index % 2, Math.floor(index / 2), 1, 1);
   }
 
-  row.add_suffix(box);
+  layout.append(grid);
+  row.set_child(layout);
   return { row, controls };
 }
 
@@ -145,7 +163,13 @@ function createQuickAddGroup({ description, leading, placeholder }) {
     title: "Quick Add",
     description,
   });
-  const box = new Gtk.Box({ spacing: 8, margin_top: 8, margin_bottom: 8 });
+  const box = new Gtk.Box({
+    spacing: 8,
+    margin_top: 8,
+    margin_bottom: 8,
+    margin_start: 12,
+    margin_end: 12,
+  });
   box.append(leading);
 
   const entry = new Gtk.Entry({ hexpand: true, placeholder_text: placeholder });
@@ -312,8 +336,8 @@ function createConfigEditor() {
     [
       ["tl", "TL"],
       ["tr", "TR"],
-      ["br", "BR"],
       ["bl", "BL"],
+      ["br", "BR"],
     ],
     0,
     200,
@@ -593,6 +617,7 @@ function buildConfigRow({
     icon_name: "user-trash-symbolic",
     tooltip_text: "Remove",
     css_classes: ["destructive-action"],
+    valign: Gtk.Align.CENTER,
   });
   removeButton.connect("clicked", () => {
     const rawConfigs = getRawConfigs();
@@ -808,8 +833,10 @@ function buildConfigsPage(window, configStore) {
   });
   const searchBox = new Gtk.Box({
     spacing: 8,
-    margin_top: 4,
-    margin_bottom: 4,
+    margin_top: 6,
+    margin_bottom: 6,
+    margin_start: 12,
+    margin_end: 12,
   });
   const searchEntry = new Gtk.SearchEntry({
     hexpand: true,
@@ -1112,13 +1139,22 @@ function buildRawConfigPage(window, configStore) {
     title: "Full config file",
     subtitle: "Importing replaces the effective config after confirmation.",
   });
-  const exportButton = new Gtk.Button({ label: "Export…" });
+  const exportButton = new Gtk.Button({
+    label: "Export…",
+    valign: Gtk.Align.CENTER,
+  });
   const importButton = new Gtk.Button({
     label: "Import…",
     css_classes: ["suggested-action"],
+    valign: Gtk.Align.CENTER,
   });
-  fileRow.add_suffix(exportButton);
-  fileRow.add_suffix(importButton);
+  const fileActions = new Gtk.Box({
+    spacing: 8,
+    valign: Gtk.Align.CENTER,
+  });
+  fileActions.append(exportButton);
+  fileActions.append(importButton);
+  fileRow.add_suffix(fileActions);
   fileGroup.add(fileRow);
 
   const jsonGroup = new Adw.PreferencesGroup({
