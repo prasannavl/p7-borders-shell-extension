@@ -51,6 +51,13 @@ export class BorderManager {
     return isInterestingWindow(metaWindow, modalEnabled, Meta.WindowType);
   }
 
+  _isUnexpectedlyUntracked(metaWindow, data) {
+    return isLiveObject(metaWindow) &&
+      this._isInterestingWindow(metaWindow) &&
+      !this._pending.isTracked(metaWindow) &&
+      !this.isLiveWindowData(data);
+  }
+
   _resyncAll() {
     for (const [win, data] of this._windowData.entries()) {
       // Get fresh config to ensure we have latest colors/settings
@@ -303,35 +310,26 @@ export class BorderManager {
 
   _onFocusChanged() {
     const currentFocus = global.display.focus_window;
-    const lastData = this._lastFocusedWindow
-      ? this._windowData.get(this._lastFocusedWindow)
-      : null;
+    const lastFocus = this._lastFocusedWindow;
+    const lastData = lastFocus ? this._windowData.get(lastFocus) : null;
     const currentData = currentFocus
       ? this._windowData.get(currentFocus)
       : null;
 
-    const lastValid = lastData && this.isLiveWindowData(lastData);
-    const currentValid = !currentFocus ||
-      (currentData && this.isLiveWindowData(currentData));
-
-    // If either focused window is invalid, it's either the
-    // first window or something went wrong with tracking,
-    // focus tacking, resync all
     if (
-      (this._lastFocusedWindow && !lastValid) ||
-      (currentFocus && !currentValid)
+      this._isUnexpectedlyUntracked(lastFocus, lastData) ||
+      this._isUnexpectedlyUntracked(currentFocus, currentData)
     ) {
+      // An unexpected tracking gap can be a symptom of Shell actor or signal
+      // inconsistencies. Resync everything as the broad self-healing fallback.
       this._resyncAll();
       this._lastFocusedWindow = currentFocus;
       return;
     }
 
-    // Sync the previously focused window (if any)
-    this._queueUpdate(this._lastFocusedWindow, lastData);
-    // Sync the newly focused window (if any)
-    this._queueUpdate(currentFocus, currentData);
+    if (lastData) this._queueUpdate(lastFocus, lastData);
+    if (currentData) this._queueUpdate(currentFocus, currentData);
 
-    // Update last focused window
     this._lastFocusedWindow = currentFocus;
   }
 
