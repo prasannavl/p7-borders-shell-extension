@@ -10,13 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   independent storage-format version for future breaking migrations.
 - Allow the shipped configuration layer to be disabled completely while keeping
   the same independent user rules.
+- Apply tombstones uniformly, cascade suppressed presets safely, and isolate
+  malformed manual rules instead of discarding the complete user layer.
 - Redesign preferences with compact quick-add editors, app-key search, separate
   user and effective JSON views, and transactional full-config import/export.
 - Correct edge-aware margins and corner radii, and keep custom regex configs
   ahead of modified shipped patterns.
 - Add automated coverage for configuration storage, border geometry, window
   lifecycle, schemas, and release packaging, plus standalone GJS compatibility
-  and preferences module-load checks with every supported Shell version.
+  and preferences module-load checks with every supported Shell version using
+  locked test dependencies and locale-independent package verification.
 
 ## [46] - 2026-08-30
 

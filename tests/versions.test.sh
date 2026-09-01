@@ -1,26 +1,8 @@
 set -euo pipefail
 
-releases=(
-  nixos-23.11
-  nixos-24.05
-  nixos-24.11
-  nixos-25.05
-  nixos-25.11
-  nixos-unstable
-)
-
-for release in "${releases[@]}"; do
-  expression="
-    let
-      pkgs = (builtins.getFlake \"github:NixOS/nixpkgs/$release\").legacyPackages.\${builtins.currentSystem};
-      gnomeShell = pkgs.gnome-shell or pkgs.gnome.gnome-shell;
-    in pkgs.mkShell {
-      packages = [ pkgs.gjs pkgs.glib pkgs.libadwaita gnomeShell ];
-      shellHook = \"export GNOME_SHELL_STORE=\${gnomeShell}; export GNOME_SHELL_EXTENSIONS_RESOURCE=\${gnomeShell}/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource\";
-    }
-  "
-
-  nix --quiet develop --impure --expr "$expression" --command bash -c '
+for version in 45 46 47 48 49 50; do
+  nix --quiet develop ".#gnome-$version" --command \
+    env GNOME_TEST_VERSION="$version" bash -c '
     set -euo pipefail
     unset GIO_EXTRA_MODULES
     shell_gi_path=$(nix-store -qR "$GNOME_SHELL_STORE" | while IFS= read -r dependency; do
@@ -54,7 +36,14 @@ for release in "${releases[@]}"; do
       fi
     }
 
-    gnome-shell --version
+    shell_version=$(gnome-shell --version)
+    echo "$shell_version"
+    shell_major=${shell_version#GNOME Shell }
+    shell_major=${shell_major%%.*}
+    if [[ "$shell_major" != "$GNOME_TEST_VERSION" ]]; then
+      echo "FAIL - expected GNOME Shell $GNOME_TEST_VERSION"
+      exit 1
+    fi
     gjs --version
     glib-compile-schemas schemas
     run_test compat gjs -m tests/compat.test.js

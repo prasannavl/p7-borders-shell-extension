@@ -10,7 +10,7 @@ EXTRA_SOURCE_ARGS := $(foreach f,$(EXTRA_SOURCES),--extra-source=$(f))
 lint:
 	biome lint $(JS_FILES) tests
 
-test: schemas
+test: lint schemas
 	deno test --allow-read=. tests/appconfig.test.js tests/borderstate.test.js tests/metadata.test.js
 	gjs -m tests/compat.test.js
 	gjs -m tests/windowtracking.test.js
