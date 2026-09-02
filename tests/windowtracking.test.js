@@ -4,7 +4,7 @@ import {
   isInterestingWindow,
   isLiveObject,
   PendingTracker,
-} from "../windowtracking.js";
+} from "../shell/windowtracking.js";
 
 let passed = 0;
 

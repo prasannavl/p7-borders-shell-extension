@@ -1,13 +1,13 @@
 import GLib from "gi://GLib";
 
-import { deriveAppConfigRules, RULES_KEY } from "./appconfig.js";
+import { deriveAppConfigRules, RULES_KEY } from "../common/appconfig.js";
 import {
   getSettingsBaseConfigs,
   getSettingsRules,
   readSettingsAppConfigs,
   setSettingsRules,
   USE_SHIPPED_CONFIGS_KEY,
-} from "./config.js";
+} from "../common/config.js";
 
 export class PreferencesConfigStore {
   constructor(settings, saveDelayMs = 150) {

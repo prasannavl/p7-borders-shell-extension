@@ -1,5 +1,13 @@
 # GNOME Extension that adds window borders to windows based on config efficiently
 
+- `common/` contains code shared by the Shell extension and preferences:
+  application config rules and validation, border-state policy, and GSettings
+  configuration management.
+- `shell/` contains Shell-only integration: border lifecycle management, Mutter
+  compatibility, and asynchronous window tracking.
+- `prefs/` contains preferences-only configuration storage and UI code.
+- Keep `extension.js` and `prefs.js` as thin GNOME entrypoints.
+
 - Adds a **per-window border** as a child of MetaWindowActor
 
   - Supports:
@@ -31,7 +39,8 @@
 
 Compatibility:
 
-- GNOME 48, 49 in particular.
+- Tier 1: GNOME 50 (actively tested).
+- Tier 2: GNOME 45+ (works, best effort).
 
 Programming styles:
 

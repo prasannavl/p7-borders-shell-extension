@@ -4,8 +4,8 @@ Add per-window borders in GNOME Shell with per-side margins, per-corner radii,
 and edge-aware hiding. Makes mutter attach borders to each window actor
 efficiently with cached inline styles in the compositor.
 
-- Compatibility: GNOME Shell 49+.
-- Best effort compatibility: GNOME Shell 45+.
+- Tier 1: GNOME Shell 50 (actively tested).
+- Tier 2: GNOME Shell 45+ (works, best effort).
 - Extension Store:
   https://extensions.gnome.org/extension/9064/p7-window-borders/
 - Project is also a Nix flake for direct install on NixOS.

@@ -2,7 +2,7 @@ import {
   applyBorderState,
   getMaximizeState,
   getWindowState,
-} from "../compat.js";
+} from "../shell/compat.js";
 
 let passed = 0;
 

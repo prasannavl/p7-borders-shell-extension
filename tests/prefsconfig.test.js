@@ -1,8 +1,8 @@
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
 
-import { getSettingsRules } from "../config.js";
-import { PreferencesConfigStore } from "../prefsconfig.js";
+import { getSettingsRules } from "../common/config.js";
+import { PreferencesConfigStore } from "../prefs/config.js";
 
 const settings = new Gio.Settings({
   schema_id: "org.gnome.shell.extensions.p7-borders",

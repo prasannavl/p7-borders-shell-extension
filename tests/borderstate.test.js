@@ -1,4 +1,4 @@
-import { computeBorderState } from "../borderstate.js";
+import { computeBorderState } from "../common/border.js";
 
 function assertEquals(actual, expected) {
   const actualJson = JSON.stringify(actual);

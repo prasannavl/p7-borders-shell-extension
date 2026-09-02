@@ -1,7 +1,7 @@
 // extension.js
 
 import { Extension } from "resource:///org/gnome/shell/extensions/extension.js";
-import { BorderManager } from "./bordermanager.js";
+import { BorderManager } from "./shell/bordermanager.js";
 
 export default class P7BordersExtension extends Extension {
   constructor(metadata) {

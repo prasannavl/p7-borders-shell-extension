@@ -4,18 +4,22 @@ archive="dist/p7-borders@prasannavl.com.shell-extension.zip"
 expected_files=$(printf '%s\n' \
   CHANGELOG.md \
   README.md \
-  appconfig.js \
-  bordermanager.js \
-  borderstate.js \
-  compat.js \
-  config.js \
+  common/ \
+  common/appconfig.js \
+  common/border.js \
+  common/config.js \
   extension.js \
+  shell/ \
+  shell/bordermanager.js \
+  shell/compat.js \
+  shell/windowtracking.js \
   metadata.json \
-	prefs.js \
-	prefsconfig.js \
+  prefs/ \
+  prefs/config.js \
+  prefs/ui.js \
+  prefs.js \
   schemas/ \
-  schemas/org.gnome.shell.extensions.p7-borders.gschema.xml \
-	windowtracking.js | LC_ALL=C sort)
+  schemas/org.gnome.shell.extensions.p7-borders.gschema.xml | LC_ALL=C sort)
 actual_files=$(unzip -Z1 "$archive" | LC_ALL=C sort)
 
 if [[ "$actual_files" != "$expected_files" ]]; then

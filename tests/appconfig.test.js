@@ -13,7 +13,7 @@ import {
   normalizeWidth,
   parseConfigJson,
   resolveConfigValue,
-} from "../appconfig.js";
+} from "../common/appconfig.js";
 
 function assertEquals(actual, expected) {
   const actualJson = JSON.stringify(actual);

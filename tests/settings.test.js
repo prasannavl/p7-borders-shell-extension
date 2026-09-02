@@ -7,7 +7,7 @@ import {
   getSettingsRules,
   readSettingsAppConfigs,
   setSettingsRules,
-} from "../config.js";
+} from "../common/config.js";
 
 // GNOME Shell adds connectObject()/disconnectObject() to GObject signals.
 // Standalone GJS does not load that Shell helper, so mirror its ownership

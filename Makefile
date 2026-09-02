@@ -1,8 +1,12 @@
 UUID := p7-borders@prasannavl.com
 DIST_DIR := dist
 SCHEMAS_DIR := schemas
-JS_FILES := $(wildcard *.js)
-EXTRA_SOURCES := $(filter-out extension.js prefs.js,$(JS_FILES)) README.md CHANGELOG.md
+TOPLEVEL_JS := $(wildcard *.js)
+COMMON_JS := $(wildcard common/*.js)
+SHELL_JS := $(wildcard shell/*.js)
+PREFS_JS := $(wildcard prefs/*.js)
+JS_FILES := $(TOPLEVEL_JS) $(COMMON_JS) $(SHELL_JS) $(PREFS_JS)
+EXTRA_SOURCES := README.md CHANGELOG.md common shell prefs
 EXTRA_SOURCE_ARGS := $(foreach f,$(EXTRA_SOURCES),--extra-source=$(f))
 
 .PHONY: lint test test-package test-versions fmt schemas version pack install ginstall enable disable reload clean

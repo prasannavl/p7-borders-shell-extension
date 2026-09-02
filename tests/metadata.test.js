@@ -57,17 +57,19 @@ Deno.test("all relative runtime imports resolve", async () => {
   const entrypoints = [
     "extension.js",
     "prefs.js",
-    "bordermanager.js",
-    "borderstate.js",
-    "compat.js",
-    "config.js",
-    "appconfig.js",
-    "windowtracking.js",
+    "common/appconfig.js",
+    "common/border.js",
+    "common/config.js",
+    "shell/bordermanager.js",
+    "shell/compat.js",
+    "shell/windowtracking.js",
+    "prefs/config.js",
+    "prefs/ui.js",
   ];
   for (const entrypoint of entrypoints) {
     const entrypointUrl = new URL(entrypoint, root);
     const source = await Deno.readTextFile(entrypointUrl);
-    for (const match of source.matchAll(/from\s+["'](\.\/[^"']+)["']/g)) {
+    for (const match of source.matchAll(/from\s+["'](\.{1,2}\/[^"']+)["']/g)) {
       const imported = new URL(match[1], entrypointUrl);
       try {
         await Deno.stat(imported);

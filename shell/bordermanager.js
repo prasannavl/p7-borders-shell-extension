@@ -1,9 +1,9 @@
 import Meta from "gi://Meta";
 import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { computeBorderState } from "./borderstate.js";
+import { computeBorderState } from "../common/border.js";
 import { applyBorderState, getWindowState } from "./compat.js";
-import { ConfigManager } from "./config.js";
+import { ConfigManager } from "../common/config.js";
 import {
   isInterestingWindow,
   isLiveObject,

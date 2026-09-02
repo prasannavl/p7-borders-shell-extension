@@ -2,11 +2,19 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [49] - 2026-09-02
+
+- Organize shared policy, GNOME Shell integration, and preferences into clear
+  `common/`, `shell/`, and `prefs/` layers while keeping both root entrypoints
+  small and preserving existing behavior.
+- Extend import and package verification to cover the complete nested runtime
+  structure.
+
 ## [48] - 2026-09-01
 
-- Polish preferences spacing and action sizing, and arrange per-side margins
-  and corner radii in responsive two-column grids that remain readable at
-  narrow window sizes.
+- Polish preferences spacing and action sizing, and arrange per-side margins and
+  corner radii in responsive two-column grids that remain readable at narrow
+  window sizes.
 
 ## [47] - 2026-08-31
 
