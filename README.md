@@ -119,6 +119,11 @@ Keys match by:
 - `regex.app:...` or `regex.class:...` for regex matches
 - Presets use keys starting with `@` and can be referenced by name
 
+Shipped presets use short names such as `@off`, `@gtk`, `@gtk-all`, `@adw`, and
+`@qt`. `@off` disables the border. Generic CSD names encode their geometry:
+`@csd-12` means a 12px top radius with a square bottom, while `@csd-12-10` means
+12px at the top and 10px at the bottom.
+
 Each config can define:
 
 - `enabled` (bool)
@@ -133,7 +138,7 @@ Custom keys are added normally. Example `rules` JSON:
 
 ```json
 {
-  "@gtkPreset": {
+  "@gtk": {
     "radius": { "tl": 12, "tr": 12 }
   },
   "class:org.gnome.Terminal": { "width": 4 },
@@ -212,32 +217,32 @@ border.
 
 By opt-in, we workaround these misaligned insets and lets us tune per-app
 margins and radii where they make sense. There are common presets where apps
-follow known toolkit standards. This for example is applied for `@gtkPreset`,
-`@adwPreset`, etc.
+follow known toolkit standards. This for example is applied for `@gtk`, `@adw`,
+etc.
 
 ### Why are my Chrome (or Chromium, Chrome Apps) borders off?
 
 The current default preset works with Chrome's native and Qt mode. If you use
-Gtk, then the border preset needs switching to `@gtkPreset` for both chrome and
-chrome apps. Chrome adds it's own borders and doesn't have consistent borders
-across all 3 modes.
+Gtk, then the border preset needs switching to `@gtk` for both chrome and chrome
+apps. Chrome adds it's own borders and doesn't have consistent borders across
+all 3 modes.
 
 The json config:
 
 ```
 # default 
-"regex.class:^google-chrome*": "@chromePreset",
-"regex.class:^chrome-*": "@chromePreset",
-"regex.class:^chromeium*": "@chromePreset",
+"regex.class:^google-chrome*": "@chrome",
+"regex.class:^chrome-*": "@chrome",
+"regex.class:^chromeium*": "@chrome",
 ```
 
 Switch to:
 
 ```
 # default 
-"regex.class:^google-chrome*": "@gtkPreset",
-"regex.class:^chrome-*": "@gtkPreset",
-"regex.class:^chromium*": "@gtkPreset",
+"regex.class:^google-chrome*": "@gtk",
+"regex.class:^chrome-*": "@gtk",
+"regex.class:^chromium*": "@gtk",
 ```
 
 The preset is already provided. Simply use the extension preferences to switch

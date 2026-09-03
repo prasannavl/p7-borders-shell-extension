@@ -37,7 +37,8 @@ Deno.test("schema contains only current app config storage", () => {
     schema.includes('name="use-shipped-configs"'),
     "shipped config mode missing",
   );
-  assert(schema.includes('name="config-version"'), "config version missing");
+  assert(schema.includes('name="schema-version"'), "schema version missing");
+  assert(!schema.includes('name="config-version"'), "old version key remains");
 });
 
 Deno.test("current release has a dated changelog entry", async () => {

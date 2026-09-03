@@ -17,7 +17,7 @@ import {
   RULES_KEY,
 } from "./appconfig.js";
 
-export const CONFIG_VERSION = 13;
+export const SCHEMA_VERSION = 1;
 export const USE_SHIPPED_CONFIGS_KEY = "use-shipped-configs";
 const DEFAULT_ACTIVE_COLOR = "rgba(51, 153, 230, 0.4)";
 const DEFAULT_INACTIVE_COLOR = "rgba(102, 102, 102, 0.2)";
@@ -30,15 +30,15 @@ export function getSettingsBaseConfigs(settings) {
   return settings.get_boolean(USE_SHIPPED_CONFIGS_KEY) ? BASE_APP_CONFIGS : {};
 }
 
-export function ensureConfigVersion(settings) {
-  const storedVersion = settings.get_int("config-version");
+export function ensureSchemaVersion(settings) {
+  const storedVersion = settings.get_int("schema-version");
   // Persist even when the schema default matches. A future default bump must
   // still be able to identify existing installs that need migration.
   if (
-    settings.get_user_value("config-version") === null ||
-    storedVersion < CONFIG_VERSION
+    settings.get_user_value("schema-version") === null ||
+    storedVersion < SCHEMA_VERSION
   ) {
-    settings.set_int("config-version", CONFIG_VERSION);
+    settings.set_int("schema-version", SCHEMA_VERSION);
   }
 }
 
@@ -98,7 +98,7 @@ export class ConfigManager {
     // Callbacks for config changes
     this._configChangeCallbacks = new Set();
 
-    ensureConfigVersion(this._settings);
+    ensureSchemaVersion(this._settings);
 
     // Connect to settings changes
     this._settings.connectObject(
@@ -194,22 +194,7 @@ export class ConfigManager {
     // 'accent-color' was introduced in GNOME 47.
     // Older versions (45/46) may not have this key in the schema.
     if (this._interfaceSettings.settings_schema.has_key("accent-color")) {
-      const accentColor = this._interfaceSettings.get_string("accent-color");
-
-      // Map GNOME accent colors to RGBA values with alpha 0.4
-      const accentColorMap = {
-        blue: "rgba(53, 132, 228, 0.4)",
-        teal: "rgba(51, 209, 122, 0.4)",
-        green: "rgba(46, 194, 126, 0.4)",
-        yellow: "rgba(248, 228, 92, 0.4)",
-        orange: "rgba(255, 120, 0, 0.4)",
-        red: "rgba(237, 51, 59, 0.4)",
-        pink: "rgba(224, 27, 36, 0.4)",
-        purple: "rgba(145, 65, 172, 0.4)",
-        slate: "rgba(99, 104, 128, 0.4)",
-      };
-
-      return accentColorMap[accentColor] || DEFAULT_ACTIVE_COLOR;
+      return "-st-accent-color";
     }
 
     return DEFAULT_ACTIVE_COLOR;

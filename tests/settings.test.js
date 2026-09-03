@@ -1,11 +1,11 @@
 import Gio from "gi://Gio";
 
 import {
-  CONFIG_VERSION,
   ConfigManager,
-  ensureConfigVersion,
+  ensureSchemaVersion,
   getSettingsRules,
   readSettingsAppConfigs,
+  SCHEMA_VERSION,
   setSettingsRules,
 } from "../common/config.js";
 
@@ -60,22 +60,22 @@ function test(name, callback) {
   }
 }
 
-test("configuration format version is persisted without downgrades", () => {
-  assertEquals(settings.get_int("config-version"), CONFIG_VERSION);
-  ensureConfigVersion(settings);
-  assertEquals(settings.get_int("config-version"), CONFIG_VERSION);
+test("settings schema version is persisted without downgrades", () => {
+  assertEquals(settings.get_int("schema-version"), SCHEMA_VERSION);
+  ensureSchemaVersion(settings);
+  assertEquals(settings.get_int("schema-version"), SCHEMA_VERSION);
   assertEquals(
-    settings.get_user_value("config-version")?.get_int32(),
-    CONFIG_VERSION,
+    settings.get_user_value("schema-version")?.get_int32(),
+    SCHEMA_VERSION,
   );
 
-  settings.set_int("config-version", CONFIG_VERSION - 1);
-  ensureConfigVersion(settings);
-  assertEquals(settings.get_int("config-version"), CONFIG_VERSION);
+  settings.set_int("schema-version", SCHEMA_VERSION - 1);
+  ensureSchemaVersion(settings);
+  assertEquals(settings.get_int("schema-version"), SCHEMA_VERSION);
 
-  settings.set_int("config-version", CONFIG_VERSION + 1);
-  ensureConfigVersion(settings);
-  assertEquals(settings.get_int("config-version"), CONFIG_VERSION + 1);
+  settings.set_int("schema-version", SCHEMA_VERSION + 1);
+  ensureSchemaVersion(settings);
+  assertEquals(settings.get_int("schema-version"), SCHEMA_VERSION + 1);
 });
 
 test("empty rules reset their user value", () => {
@@ -105,7 +105,7 @@ test("shipped configs can be excluded without changing user rules", () => {
   assertEquals(layered.rules, rules);
   assertEquals(layered.configs["class:mine"], "@mine");
   assertEquals(layered.configs["class:firefox"], undefined);
-  assertEquals(layered.configs["class:thunderbird"], "@gtkPreset");
+  assertEquals(layered.configs["class:thunderbird"], "@gtk");
 });
 
 test("ConfigManager uses only standalone rules when shipped configs are off", () => {
@@ -127,7 +127,7 @@ test("ConfigManager uses only standalone rules when shipped configs are off", ()
 
 test("invalid standalone rules fall back to an empty config", () => {
   settings.set_boolean("use-shipped-configs", false);
-  setSettingsRules(settings, { "class:broken": "@gtkPreset" });
+  setSettingsRules(settings, { "class:broken": "@gtk" });
   assertEquals(readSettingsAppConfigs(settings).configs, {});
 });
 
@@ -298,7 +298,7 @@ test("preferences and runtime retain valid rules beside invalid ones", () => {
   assertEquals(rules, { "class:valid": { width: 8 } });
   assertEquals(configs["class:broken"], undefined);
   assertEquals(configs["class:valid"], { width: 8 });
-  assertEquals(configs["class:firefox"], "@gtkPreset");
+  assertEquals(configs["class:firefox"], "@gtk");
   assertEquals(getSettingsRules(settings), {
     "class:broken": { width: "wide" },
     "class:valid": { width: 8 },
@@ -307,16 +307,16 @@ test("preferences and runtime retain valid rules beside invalid ones", () => {
 
 test("preset tombstones and custom nulls produce valid effective configs", () => {
   setSettingsRules(settings, {
-    "@gtkPreset": null,
+    "@gtk": null,
     "class:custom": { width: null, radius: { tl: 7, tr: null } },
   });
 
   const { configs, rules } = readSettingsAppConfigs(settings);
   assertEquals(rules, {
-    "@gtkPreset": null,
+    "@gtk": null,
     "class:custom": { width: null, radius: { tl: 7, tr: null } },
   });
-  assertEquals(configs["@gtkPreset"], undefined);
+  assertEquals(configs["@gtk"], undefined);
   assertEquals(configs["class:firefox"], undefined);
   assertEquals(configs["class:custom"], { radius: { tl: 7 } });
 });
@@ -345,7 +345,7 @@ test("unsafe color declarations cannot reach border styles", () => {
 
 test("preset rules reach every app that references the preset", () => {
   setSettingsRules(settings, {
-    "@gtkPreset": { width: 7, radius: { tl: 21 } },
+    "@gtk": { width: 7, radius: { tl: 21 } },
   });
 
   withManager((manager) => {
@@ -367,13 +367,12 @@ test("window methods are optional and fall back to global defaults", () => {
   });
 });
 
-test("accent compatibility covers missing, known, and unknown values", () => {
+test("accent compatibility uses the Shell accent color when available", () => {
   const getColor = ConfigManager.prototype._getDefaultActiveOrAccentColor;
-  const receiver = (hasAccent, accent = "blue") => ({
+  const receiver = (hasAccent) => ({
     _settings: { get_string: () => "auto" },
     _interfaceSettings: {
       settings_schema: { has_key: () => hasAccent },
-      get_string: () => accent,
     },
   });
 
@@ -382,12 +381,8 @@ test("accent compatibility covers missing, known, and unknown values", () => {
     "rgba(51, 153, 230, 0.4)",
   );
   assertEquals(
-    getColor.call(receiver(true, "purple")),
-    "rgba(145, 65, 172, 0.4)",
-  );
-  assertEquals(
-    getColor.call(receiver(true, "future-color")),
-    "rgba(51, 153, 230, 0.4)",
+    getColor.call(receiver(true)),
+    "-st-accent-color",
   );
 });
 

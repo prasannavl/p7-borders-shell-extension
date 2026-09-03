@@ -2,6 +2,15 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [50] - 2026-09-03
+
+- Use the Shell accent color token on GNOME 47 and newer so borders follow the
+  active theme accurately while retaining the fallback for older versions.
+- Adopt concise semantic and geometry-based preset names, add reusable CSD and
+  disabled presets, and use them throughout the shipped application config.
+- Rename the persisted settings revision to `schema-version` and restart it at
+  version 1 without coupling shipped base-config updates to migrations.
+
 ## [49] - 2026-09-02
 
 - Organize shared policy, GNOME Shell integration, and preferences into clear

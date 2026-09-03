@@ -13,7 +13,7 @@ import {
   normalizeMargins,
   normalizeRadius,
 } from "../common/appconfig.js";
-import { ensureConfigVersion } from "../common/config.js";
+import { ensureSchemaVersion } from "../common/config.js";
 import { PreferencesConfigStore } from "./config.js";
 
 const CUSTOM_LABEL = "Custom";
@@ -1329,7 +1329,7 @@ function buildRawConfigPage(window, configStore) {
 }
 
 export function fillPreferencesWindow(window, settings) {
-  ensureConfigVersion(settings);
+  ensureSchemaVersion(settings);
   const configStore = new PreferencesConfigStore(settings);
   window.connect("destroy", () => configStore.destroy());
   window.set_default_size(760, 640);

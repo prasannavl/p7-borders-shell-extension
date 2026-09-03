@@ -77,10 +77,10 @@
       <description>Layer user rules over shipped presets and application configurations</description>
     </key>
 
-    <key name="config-version" type="i">
-      <default>13</default>
-      <summary>Configuration storage version</summary>
-      <description>Version of the persisted configuration format for future migrations</description>
+    <key name="schema-version" type="i">
+      <default>1</default>
+      <summary>Settings schema version</summary>
+      <description>Version of the persisted settings schema for future migrations</description>
     </key>
     
   </schema>

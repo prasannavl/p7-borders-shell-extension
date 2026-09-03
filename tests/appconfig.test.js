@@ -31,6 +31,31 @@ Deno.test("base entries remain references without rules", () => {
   assertEquals(buildEffectiveAppConfigs({}, base), base);
 });
 
+Deno.test("shipped CSD preset names encode top and bottom radii", () => {
+  assertEquals(BASE_APP_CONFIGS["@off"], { enabled: false });
+  assertEquals(BASE_APP_CONFIGS["@adw"], {
+    radius: { tl: 18, tr: 18, br: 18, bl: 18 },
+  });
+  assertEquals(BASE_APP_CONFIGS["@csd-12"], {
+    radius: { tl: 12, tr: 12, br: 0, bl: 0 },
+  });
+  assertEquals(BASE_APP_CONFIGS["@csd-12-12"], {
+    radius: { tl: 12, tr: 12, br: 12, bl: 12 },
+  });
+  assertEquals(BASE_APP_CONFIGS["@csd-18"], {
+    radius: { tl: 18, tr: 18, br: 0, bl: 0 },
+  });
+  assertEquals(BASE_APP_CONFIGS["@csd-18-18"], {
+    radius: { tl: 18, tr: 18, br: 18, bl: 18 },
+  });
+  assertEquals(BASE_APP_CONFIGS["class:lollypop"], "@gtk-all");
+  assertEquals(BASE_APP_CONFIGS["class:firefox"], "@gtk");
+  assertEquals(BASE_APP_CONFIGS["class:thunderbird"], "@gtk");
+  assertEquals(BASE_APP_CONFIGS["class:Alacritty"], "@csd-12");
+  assertEquals(BASE_APP_CONFIGS["class:xwaylandvideobridge"], "@off");
+  assertEquals(BASE_APP_CONFIGS["regex.class:keepassxc"], undefined);
+});
+
 Deno.test("preset rules flow into shipped app references", () => {
   const base = {
     "@preset": { radius: { tl: 10, tr: 10 } },
