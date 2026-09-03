@@ -90,7 +90,8 @@ Global defaults apply when no app-specific rule exists:
 - `default-width` (int)
 - `default-margins` (int, applied to all sides)
 - `default-radius` (int, applied to all corners)
-- `default-active-color` (string, `auto` uses GNOME accent)
+- `default-active-color` (string: `auto` uses the GNOME accent at 40% opacity,
+  `auto-solid` uses the opaque accent, and any CSS color is used directly)
 - `default-inactive-color` (string)
 - `default-maximized-borders` (bool)
 - `radius-enabled` (bool)

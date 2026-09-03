@@ -20,6 +20,7 @@ import {
 export const SCHEMA_VERSION = 1;
 export const USE_SHIPPED_CONFIGS_KEY = "use-shipped-configs";
 const DEFAULT_ACTIVE_COLOR = "rgba(51, 153, 230, 0.4)";
+const DEFAULT_SOLID_ACTIVE_COLOR = "rgb(51, 153, 230)";
 const DEFAULT_INACTIVE_COLOR = "rgba(102, 102, 102, 0.2)";
 
 function safeColor(value, fallback) {
@@ -184,20 +185,21 @@ export class ConfigManager {
   }
 
   _getDefaultActiveOrAccentColor() {
-    // Custom color that works well for all dark and light themes
-    // Check if we should use auto accent color
     const activeColor = this._settings.get_string("default-active-color");
-    if (activeColor !== "auto") {
+    const solidAccent = activeColor === "auto-solid";
+    if (activeColor !== "auto" && !solidAccent) {
       return safeColor(activeColor, DEFAULT_ACTIVE_COLOR);
     }
 
     // 'accent-color' was introduced in GNOME 47.
     // Older versions (45/46) may not have this key in the schema.
     if (this._interfaceSettings.settings_schema.has_key("accent-color")) {
-      return "-st-accent-color";
+      return solidAccent
+        ? "-st-accent-color"
+        : "st-transparentize(-st-accent-color, 0.6)";
     }
 
-    return DEFAULT_ACTIVE_COLOR;
+    return solidAccent ? DEFAULT_SOLID_ACTIVE_COLOR : DEFAULT_ACTIVE_COLOR;
   }
 
   // --- GSettings change handling -----------------------------------------

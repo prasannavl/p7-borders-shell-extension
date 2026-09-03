@@ -367,22 +367,34 @@ test("window methods are optional and fall back to global defaults", () => {
   });
 });
 
-test("accent compatibility uses the Shell accent color when available", () => {
+test("active color supports translucent, solid, and manual modes", () => {
   const getColor = ConfigManager.prototype._getDefaultActiveOrAccentColor;
-  const receiver = (hasAccent) => ({
-    _settings: { get_string: () => "auto" },
+  const receiver = (activeColor, hasAccent) => ({
+    _settings: { get_string: () => activeColor },
     _interfaceSettings: {
       settings_schema: { has_key: () => hasAccent },
     },
   });
 
   assertEquals(
-    getColor.call(receiver(false)),
+    getColor.call(receiver("auto", false)),
     "rgba(51, 153, 230, 0.4)",
   );
   assertEquals(
-    getColor.call(receiver(true)),
+    getColor.call(receiver("auto", true)),
+    "st-transparentize(-st-accent-color, 0.6)",
+  );
+  assertEquals(
+    getColor.call(receiver("auto-solid", false)),
+    "rgb(51, 153, 230)",
+  );
+  assertEquals(
+    getColor.call(receiver("auto-solid", true)),
     "-st-accent-color",
+  );
+  assertEquals(
+    getColor.call(receiver("rgba(1, 2, 3, 0.7)", true)),
+    "rgba(1, 2, 3, 0.7)",
   );
 });
 

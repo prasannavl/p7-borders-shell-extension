@@ -55,7 +55,7 @@
     <key name="default-active-color" type="s">
       <default>'auto'</default>
       <summary>Default active border color</summary>
-      <description>Default color for active window borders ('auto' uses accent color)</description>
+      <description>Default color for active window borders ('auto' uses the accent color at 40% opacity and 'auto-solid' uses it without transparency)</description>
     </key>
     
     <key name="default-inactive-color" type="s">
