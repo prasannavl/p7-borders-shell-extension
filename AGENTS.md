@@ -15,10 +15,8 @@
     - **Per-side margins** (top/right/bottom/left)
     - **Per-corner radius** (tl/tr/br/bl)
     - **Edge-aware hiding** (skip borders when touching screen edges)
-  - Uses **CSS**, but:
-    - Only a **fixed style class** (p7-border) for color/etc.
-    - Computes **inline border-width + border-radius**
-    - **Caches** the style so set_style() isn’t called unless needed
+  - Uses **inline CSS** for per-side border widths, radius, and color.
+  - **Caches** the complete style so set_style() isn’t called unless needed.
 
   - Floating window → not touching any edge → all margins active → full border
     with configured per-corner radius.
@@ -32,10 +30,10 @@
     gtk-application-id or wm_class, so you can have per-app margins/radii.
   - Uses per-side margins + per-corner radius.
   - Hides borders automatically when touching edges (maximized, snapped, etc.).
-  - Early-outs when either:
-    - Config margins are all zero, or
-    - Effective margins (after edge logic) are all zero.
-    - Caches CSS so set_style() runs only when something actually changes.
+  - Hides the border when disabled, width is zero, geometry is invalid, the
+    window is fullscreen or fully maximized, maximized borders are disabled, or
+    edge handling hides every side.
+  - Caches CSS so set_style() runs only when something actually changes.
 
 Compatibility:
 
@@ -47,6 +45,12 @@ Programming styles:
 - Simplicity is a MUST. Keep the code as simpler as possible.
 - Avoid excessive defensiveness when not necessary.
 - Avoid duplication and promote reusability as much as possible.
+- Add a guard or `try`/`catch` only for a concrete failure boundary, such as
+  untrusted input, external I/O, disposed GObjects, or transactional cleanup.
+  Every defense must own recovery, rollback, reporting, or an invariant; avoid
+  speculative checks and checks already enforced by the owning abstraction.
+- Lightweight optional chaining and nullish fallbacks are fine; scrutinize
+  defenses that require additional branching, state, or exception handling.
 
 ### Operations
 

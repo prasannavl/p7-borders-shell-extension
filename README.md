@@ -87,9 +87,9 @@ Settings are stored in GSettings schema `org.gnome.shell.extensions.p7-borders`.
 Global defaults apply when no app-specific rule exists:
 
 - `default-enabled` (bool)
-- `default-width` (int)
-- `default-margins` (int, applied to all sides)
-- `default-radius` (int, applied to all corners)
+- `default-width` (integer from 0 to 50)
+- `default-margins` (integer from -100 to 100, applied to all sides)
+- `default-radius` (integer from 0 to 200, applied to all corners)
 - `default-active-color` (string: `auto` uses the GNOME accent at 40% opacity,
   `auto-solid` uses the opaque accent, and any CSS color is used directly)
 - `default-inactive-color` (string)
@@ -108,6 +108,10 @@ provides both the editable **User Rules** JSON and the read-only **Effective
 Config** produced after merging both layers. The effective config can also be
 imported or exported as a JSON file.
 
+Per-app `width`, `margins`, and `radius` values use the same ranges as the
+global defaults above. Margins may be a scalar or a per-side object; radius may
+be a scalar or a per-corner object.
+
 Disable **Use shipped app configs** on the Global page to evaluate the same user
 rules against an empty base. In this mode, shipped presets and app entries are
 completely excluded; only your non-null rules become effective. Switching the
@@ -120,10 +124,17 @@ Keys match by:
 - `regex.app:...` or `regex.class:...` for regex matches
 - Presets use keys starting with `@` and can be referenced by name
 
+Regex rules use syntax accepted by both JavaScript and GLib/PCRE, follow
+GLib/PCRE's case-insensitive matching semantics, and run with bounded match and
+recursion budgets. Persisted configuration is limited to 512 user rules and 256
+KiB of JSON, with at most 64 raw and 32 effective regexes of 256 characters
+each. Runtime recovery examines at most 1,024 raw rule candidates; full
+effective-config files are limited to 1 MiB.
+
 Shipped presets use short names such as `@off`, `@gtk`, `@gtk-all`, `@adw`, and
 `@qt`. `@off` disables the border. Generic CSD names encode their geometry:
-`@csd-12` means a 12px top radius with a square bottom, while `@csd-12-10` means
-12px at the top and 10px at the bottom.
+`@csd-12` means a 12px top radius with a square bottom, while `@csd-12-12` means
+12px at both the top and bottom.
 
 Each config can define:
 
@@ -228,22 +239,24 @@ Gtk, then the border preset needs switching to `@gtk` for both chrome and chrome
 apps. Chrome adds it's own borders and doesn't have consistent borders across
 all 3 modes.
 
-The json config:
+The JSON rules:
 
-```
-# default 
-"regex.class:^google-chrome*": "@chrome",
-"regex.class:^chrome-*": "@chrome",
-"regex.class:^chromeium*": "@chrome",
+```json
+{
+  "regex.class:^google-chrome": "@chrome",
+  "regex.class:^chrome-": "@chrome",
+  "regex.class:^chromium": "@chrome"
+}
 ```
 
 Switch to:
 
-```
-# default 
-"regex.class:^google-chrome*": "@gtk",
-"regex.class:^chrome-*": "@gtk",
-"regex.class:^chromium*": "@gtk",
+```json
+{
+  "regex.class:^google-chrome": "@gtk",
+  "regex.class:^chrome-": "@gtk",
+  "regex.class:^chromium": "@gtk"
+}
 ```
 
 The preset is already provided. Simply use the extension preferences to switch

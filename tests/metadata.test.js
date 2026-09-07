@@ -1,13 +1,7 @@
+import { assertEquals } from "./assert.js";
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
-}
-
-function assertEquals(actual, expected) {
-  const actualJson = JSON.stringify(actual);
-  const expectedJson = JSON.stringify(expected);
-  if (actualJson !== expectedJson) {
-    throw new Error(`Expected ${expectedJson}, got ${actualJson}`);
-  }
 }
 
 const metadata = JSON.parse(await Deno.readTextFile("metadata.json"));

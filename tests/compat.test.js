@@ -3,16 +3,9 @@ import {
   getMaximizeState,
   getWindowState,
 } from "../shell/compat.js";
+import { assertEquals } from "./assert.js";
 
 let passed = 0;
-
-function assertEquals(actual, expected) {
-  const actualJson = JSON.stringify(actual);
-  const expectedJson = JSON.stringify(expected);
-  if (actualJson !== expectedJson) {
-    throw new Error(`Expected ${expectedJson}, got ${actualJson}`);
-  }
-}
 
 function test(name, callback) {
   callback();
@@ -162,17 +155,15 @@ function visibleState(overrides = {}) {
 test("hidden state clears visibility and the style cache", () => {
   const border = borderFixture();
   border.visible = true;
-  const cache = { borderStyleCache: "old" };
-  applyBorderState(border, { visible: false }, cache);
+  const style = applyBorderState(border, { visible: false }, "old");
   assertEquals(border.visible, false);
-  assertEquals(cache.borderStyleCache, null);
+  assertEquals(style, null);
   assertEquals(border.styles, []);
 });
 
 test("visible state applies geometry and complete inline CSS", () => {
   const border = borderFixture();
-  const cache = { borderStyleCache: null };
-  applyBorderState(border, visibleState(), cache);
+  const style = applyBorderState(border, visibleState(), null);
 
   assertEquals(border.visible, true);
   assertEquals(border.positions, [[2, 3]]);
@@ -187,16 +178,16 @@ test("visible state applies geometry and complete inline CSS", () => {
     "border-color: rgba(1, 2, 3, 0.4);" +
     "background: transparent;",
   ]);
+  assertEquals(typeof style, "string");
 });
 
 test("unchanged styles are cached while geometry still updates", () => {
   const border = borderFixture();
-  const cache = { borderStyleCache: null };
-  applyBorderState(border, visibleState(), cache);
+  const style = applyBorderState(border, visibleState(), null);
   applyBorderState(
     border,
     visibleState({ pos: { x: 9, y: 10 } }),
-    cache,
+    style,
   );
 
   assertEquals(border.styles.length, 1);
@@ -205,10 +196,24 @@ test("unchanged styles are cached while geometry still updates", () => {
 
 test("style changes invalidate the cache", () => {
   const border = borderFixture();
-  const cache = { borderStyleCache: null };
-  applyBorderState(border, visibleState(), cache);
-  applyBorderState(border, visibleState({ borderColor: "red" }), cache);
+  const style = applyBorderState(border, visibleState(), null);
+  applyBorderState(border, visibleState({ borderColor: "red" }), style);
   assertEquals(border.styles.length, 2);
+});
+
+test("failed style application cannot advance the cache", () => {
+  const border = borderFixture();
+  border.set_style = () => {
+    throw new Error("style failed");
+  };
+
+  let style = "old";
+  try {
+    style = applyBorderState(border, visibleState(), style);
+  } catch {
+    // The assignment occurs only after the complete style update succeeds.
+  }
+  assertEquals(style, "old");
 });
 
 print(`${passed} compatibility tests passed`);

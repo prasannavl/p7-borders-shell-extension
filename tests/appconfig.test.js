@@ -8,20 +8,23 @@ import {
   getConfigMapError,
   getOrderedRegexConfigs,
   getRulesError,
+  MAX_BORDER_MARGIN,
+  MAX_BORDER_RADIUS,
+  MAX_BORDER_WIDTH,
+  MAX_COLOR_LENGTH,
+  MAX_CONFIG_ENTRIES,
+  MAX_CONFIG_JSON_LENGTH,
+  MAX_CONFIG_KEY_LENGTH,
+  MAX_REGEX_CONFIGS,
+  MAX_REGEX_LENGTH,
+  MAX_REGEX_RULES,
   normalizeMargins,
   normalizeRadius,
   normalizeWidth,
   parseConfigJson,
   resolveConfigValue,
 } from "../common/appconfig.js";
-
-function assertEquals(actual, expected) {
-  const actualJson = JSON.stringify(actual);
-  const expectedJson = JSON.stringify(expected);
-  if (actualJson !== expectedJson) {
-    throw new Error(`Expected ${expectedJson}, got ${actualJson}`);
-  }
-}
+import { assertEquals } from "./assert.js";
 
 Deno.test("base entries remain references without rules", () => {
   const base = {
@@ -205,6 +208,46 @@ Deno.test("effective config round trips through derived rules", () => {
   assertEquals(rules["class:remove"], null);
 });
 
+Deno.test("case variants of shipped exact keys retain one identity", () => {
+  const base = {
+    "@preset": { width: 3 },
+    "class:firefox": "@preset",
+  };
+  const desired = {
+    "@preset": { width: 3 },
+    "class:Firefox": { width: 5 },
+  };
+
+  const rules = deriveAppConfigRules(desired, base);
+  assertEquals(rules, { "class:firefox": { width: 5 } });
+  assertEquals(getRulesError(rules, base), null);
+  assertEquals(buildEffectiveAppConfigs(rules, base), {
+    "@preset": { width: 3 },
+    "class:firefox": { width: 5 },
+  });
+});
+
+Deno.test("case-variant rules override and suppress one shipped identity", () => {
+  const base = {
+    "@preset": { radius: 10 },
+    "class:firefox": "@preset",
+  };
+  const override = { "class:Firefox": { width: 5 } };
+  const effective = buildEffectiveAppConfigs(override, base);
+
+  assertEquals(effective, {
+    "@preset": { radius: 10 },
+    "class:firefox": { radius: 10, width: 5 },
+  });
+  assertEquals(deriveAppConfigRules(effective, base), {
+    "class:firefox": { width: 5 },
+  });
+  assertEquals(
+    buildEffectiveAppConfigs({ "class:Firefox": null }, base),
+    { "@preset": { radius: 10 } },
+  );
+});
+
 Deno.test("an equivalent object remains detached from a shipped preset", () => {
   const base = {
     "@preset": { width: 3, radius: { tl: 10 } },
@@ -250,9 +293,102 @@ Deno.test("modified shipped regexes stay behind custom regexes", () => {
   ]);
 });
 
-Deno.test("invalid JSON falls back safely", () => {
-  assertEquals(parseConfigJson("not json"), {});
-  assertEquals(parseConfigJson("[]"), {});
+Deno.test("configuration JSON parsing is bounded and strict", () => {
+  for (
+    const [raw, message] of [
+      ["not json", "Invalid JSON"],
+      ["[]", "Config must be a JSON object"],
+      [
+        " ".repeat(MAX_CONFIG_JSON_LENGTH + 1),
+        `Config must contain at most ${MAX_CONFIG_JSON_LENGTH} characters`,
+      ],
+    ]
+  ) {
+    let error;
+    try {
+      parseConfigJson(raw);
+    } catch (caught) {
+      error = caught;
+    }
+    assertEquals(error?.message, message);
+  }
+});
+
+Deno.test("configuration work has explicit input bounds", () => {
+  const entries = Object.fromEntries(
+    Array.from({ length: MAX_CONFIG_ENTRIES + 1 }, (_, index) => [
+      `class:${index}`,
+      {},
+    ]),
+  );
+  assertEquals(
+    getConfigMapError(entries),
+    `Config must contain at most ${MAX_CONFIG_ENTRIES} entries`,
+  );
+  assertEquals(
+    getConfigMapError({ [`class:${"x".repeat(MAX_CONFIG_KEY_LENGTH)}`]: {} }),
+    `Config keys must contain at most ${MAX_CONFIG_KEY_LENGTH} characters`,
+  );
+  assertEquals(
+    getConfigMapError({
+      [`regex.class:${"x".repeat(MAX_REGEX_LENGTH + 1)}`]: {},
+    }),
+    `Regular expression must contain at most ${MAX_REGEX_LENGTH} characters: ` +
+      `regex.class:${"x".repeat(MAX_REGEX_LENGTH + 1)}`,
+  );
+  assertEquals(
+    getConfigMapError({
+      "class:color": { activeColor: "x".repeat(MAX_COLOR_LENGTH + 1) },
+    }),
+    "class:color.activeColor must be a single CSS color value",
+  );
+
+  const base = Object.fromEntries(
+    Array.from({ length: MAX_REGEX_CONFIGS }, (_, index) => [
+      `regex.class:^base${index}$`,
+      {},
+    ]),
+  );
+  assertEquals(
+    getRulesError({ "regex.class:^custom$": {} }, base),
+    `Effective config must contain at most ${MAX_REGEX_CONFIGS} regexes`,
+  );
+
+  const replacementRules = Object.fromEntries([
+    ...Object.keys(base).map((key) => [key, null]),
+    ...Array.from({ length: MAX_REGEX_CONFIGS }, (_, index) => [
+      `regex.class:^replacement${index}$`,
+      {},
+    ]),
+  ]);
+  assertEquals(getRulesError(replacementRules, base), null);
+  assertEquals(
+    getOrderedRegexConfigs(
+      buildEffectiveAppConfigs(replacementRules, base),
+      replacementRules,
+      base,
+    ).length,
+    MAX_REGEX_CONFIGS,
+  );
+  assertEquals(
+    getRulesError(
+      Object.fromEntries(
+        Array.from({ length: MAX_REGEX_RULES + 1 }, (_, index) => [
+          `regex.class:^raw${index}$`,
+          null,
+        ]),
+      ),
+      {},
+    ),
+    `Config must contain at most ${MAX_REGEX_RULES} regexes`,
+  );
+
+  const cyclic = {};
+  cyclic["class:cyclic"] = cyclic;
+  assertEquals(
+    getConfigMapError(cyclic),
+    "Config must be JSON serializable",
+  );
 });
 
 Deno.test("config map validation rejects malformed entries", () => {
@@ -298,6 +434,23 @@ Deno.test("config map validation rejects malformed entries", () => {
   assertEquals(
     getConfigMapError({ "class:invalid": { width: "wide" } }),
     "class:invalid.width must be a non-negative integer",
+  );
+  assertEquals(
+    getConfigMapError({ "class:invalid": { width: MAX_BORDER_WIDTH + 1 } }),
+    `class:invalid.width must be between 0 and ${MAX_BORDER_WIDTH}`,
+  );
+  assertEquals(
+    getConfigMapError({
+      "class:invalid": { margins: { left: -MAX_BORDER_MARGIN - 1 } },
+    }),
+    `class:invalid.margins.left must be between ` +
+      `${-MAX_BORDER_MARGIN} and ${MAX_BORDER_MARGIN}`,
+  );
+  assertEquals(
+    getConfigMapError({
+      "class:invalid": { radius: { tr: MAX_BORDER_RADIUS + 1 } },
+    }),
+    `class:invalid.radius.tr must be between 0 and ${MAX_BORDER_RADIUS}`,
   );
   assertEquals(
     getConfigMapError({ "class:invalid": { enabled: "false" } }),
@@ -366,5 +519,18 @@ Deno.test("scalar and malformed geometry normalize predictably", () => {
     tr: 2,
     br: 0,
     bl: 4,
+  });
+  assertEquals(normalizeWidth(1e308), MAX_BORDER_WIDTH);
+  assertEquals(normalizeMargins(1e308), {
+    top: MAX_BORDER_MARGIN,
+    right: MAX_BORDER_MARGIN,
+    bottom: MAX_BORDER_MARGIN,
+    left: MAX_BORDER_MARGIN,
+  });
+  assertEquals(normalizeRadius(1e308), {
+    tl: MAX_BORDER_RADIUS,
+    tr: MAX_BORDER_RADIUS,
+    br: MAX_BORDER_RADIUS,
+    bl: MAX_BORDER_RADIUS,
   });
 });

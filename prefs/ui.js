@@ -1,34 +1,81 @@
 import Adw from "gi://Adw";
 import Gio from "gi://Gio";
 import Gdk from "gi://Gdk";
+import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 
 import {
   copyConfig,
-  deriveAppConfigRules,
   findEquivalentConfigKey,
-  getConfigMapError,
-  getRulesError,
   isConfigObject,
+  MAX_BORDER_MARGIN,
+  MAX_BORDER_RADIUS,
+  MAX_BORDER_WIDTH,
+  MAX_CONFIG_FILE_SIZE,
   normalizeMargins,
   normalizeRadius,
+  parseConfigJson,
 } from "../common/appconfig.js";
-import { ensureSchemaVersion } from "../common/config.js";
+import {
+  ensureSchemaVersion,
+  getSettingsConfigMapError,
+  getSettingsFullConfigError,
+} from "../common/config.js";
 import { PreferencesConfigStore } from "./config.js";
+
+Gio._promisify(
+  Gio.File.prototype,
+  "query_info_async",
+  "query_info_finish",
+);
+Gio._promisify(
+  Gio.File.prototype,
+  "load_contents_async",
+  "load_contents_finish",
+);
+Gio._promisify(
+  Gio.File.prototype,
+  "replace_contents_async",
+  "replace_contents_finish",
+);
 
 const CUSTOM_LABEL = "Custom";
 const APP_CONFIG_SOURCE = {};
 const PRESET_SOURCE = {};
 const RAW_CONFIG_SOURCE = {};
-const GLOBAL_SOURCE = {};
 
-function setEntryRowPlaceholder(row, text) {
-  const delegate = row.get_delegate();
-  delegate.set_placeholder_text(text);
+export function fillPreferencesWindow(window, settings) {
+  ensureSchemaVersion(settings);
+  const configStore = new PreferencesConfigStore(settings, {
+    onError: (error) => showToast(window, `Save failed: ${error.message}`),
+  });
+  window.connect("destroy", () => configStore.destroy());
+  window.set_default_size(760, 640);
+  window.add(buildGlobalPage(window, settings, configStore));
+  window.add(buildPresetsPage(window, configStore));
+  window.add(buildConfigsPage(window, configStore));
+  window.add(buildRawConfigPage(window, configStore));
 }
 
 function bindSetting(settings, key, object, property) {
   settings.bind(key, object, property, Gio.SettingsBindFlags.DEFAULT);
+}
+
+function bindAppliedTextSetting(window, settings, key, row) {
+  settings.bind(key, row, "text", Gio.SettingsBindFlags.GET);
+  row.show_apply_button = true;
+  row.connect("apply", () => {
+    if (
+      tryAction(window, () => {
+        if (!settings.set_string(key, row.text)) {
+          throw new Error(`Failed to write setting: ${key}`);
+        }
+      })
+    ) return;
+
+    // A rejected write must not leave an unapplied value in the editor.
+    row.text = settings.get_string(key);
+  });
 }
 
 function formatRgba(rgba) {
@@ -71,16 +118,7 @@ function attachColorPicker(row) {
 
   row.connect("notify::text", () => {
     if (syncing) return;
-    const rgba = parseRgba(row.text.trim());
-    if (!rgba) {
-      syncing = true;
-      button.rgba = makeTransparentRgba();
-      syncing = false;
-      return;
-    }
-    syncing = true;
-    button.rgba = rgba;
-    syncing = false;
+    syncButtonFromText();
   });
 
   button.connect("notify::rgba", () => {
@@ -91,7 +129,13 @@ function attachColorPicker(row) {
   });
 
   syncButtonFromText();
-  return button;
+}
+
+function createColorRow(title, placeholder) {
+  const row = new Adw.EntryRow({ title });
+  row.get_delegate().set_placeholder_text(placeholder);
+  attachColorPicker(row);
+  return row;
 }
 
 function createSpinRow({ title, subtitle, lower, upper, step = 1 }) {
@@ -157,33 +201,48 @@ function showToast(window, title) {
   window.add_toast(new Adw.Toast({ title }));
 }
 
-function createQuickAddGroup({ description, leading, placeholder }) {
-  const group = new Adw.PreferencesGroup({
-    title: "Quick Add",
-    description,
-  });
-  const box = new Gtk.Box({
-    spacing: 8,
-    margin_top: 8,
-    margin_bottom: 8,
-    margin_start: 12,
-    margin_end: 12,
-  });
-  box.append(leading);
+function tryAction(window, action, label = null) {
+  // GTK signal handlers have no caller that can present synchronous settings
+  // failures, so keep that user-facing boundary in one place.
+  try {
+    return action() !== false;
+  } catch (error) {
+    showToast(
+      window,
+      label ? `${label} failed: ${error.message}` : error.message,
+    );
+    return false;
+  }
+}
 
-  const entry = new Gtk.Entry({ hexpand: true, placeholder_text: placeholder });
-  box.append(entry);
-  const button = new Gtk.Button({
-    label: "Add",
-    css_classes: ["suggested-action"],
-    valign: Gtk.Align.CENTER,
-  });
-  box.append(button);
+async function tryFileAction(window, cancellable, label, action) {
+  // File operations are launched from GTK callbacks without awaiting them.
+  // Consume rejection here; teardown cancellation is expected and stays silent.
+  try {
+    await action();
+    return true;
+  } catch (error) {
+    if (!cancellable.is_cancelled()) {
+      showToast(window, `${label} failed: ${error.message}`);
+    }
+    return false;
+  }
+}
 
-  const row = new Adw.PreferencesRow();
-  row.set_child(box);
-  group.add(row);
-  return { group, entry, button };
+function createConfigUpdater(window, configStore, source) {
+  return (updater, debounced = false) =>
+    tryAction(
+      window,
+      () => configStore.updateConfigs(updater, source, debounced),
+    );
+}
+
+function requireConfigFileSize(size) {
+  if (size > MAX_CONFIG_FILE_SIZE) {
+    throw new Error(
+      `Config file must contain at most ${MAX_CONFIG_FILE_SIZE} bytes`,
+    );
+  }
 }
 
 function createJsonEditor(window, { editable, apply }) {
@@ -249,7 +308,7 @@ function setJsonBuffer(buffer, value) {
   buffer.set_text(JSON.stringify(value, null, 2), -1);
 }
 
-function createJsonFileChooser(window, action, title) {
+function chooseJsonFile(window, action, title, onFile, currentName = null) {
   const chooser = new Gtk.FileChooserNative({
     title,
     transient_for: window,
@@ -262,19 +321,32 @@ function createJsonFileChooser(window, action, title) {
   filter.add_mime_type("application/json");
   filter.add_pattern("*.json");
   chooser.add_filter(filter);
-  return chooser;
+  if (currentName) chooser.set_current_name(currentName);
+  chooser.connect("response", (_dialog, response) => {
+    const file = response === Gtk.ResponseType.ACCEPT
+      ? chooser.get_file()
+      : null;
+    chooser.destroy();
+    if (file) onFile(file);
+  });
+  chooser.show();
 }
 
-function clearGroupRows(group, rows) {
-  for (const row of rows) group.remove(row);
-  rows.length = 0;
-}
+async function readConfigFile(file, cancellable) {
+  const info = await file.query_info_async(
+    Gio.FILE_ATTRIBUTE_STANDARD_SIZE,
+    Gio.FileQueryInfoFlags.NONE,
+    GLib.PRIORITY_DEFAULT,
+    cancellable,
+  );
+  requireConfigFileSize(info.get_size());
 
-function getExpandedKeys(rowsByKey) {
-  return new Set(
-    Array.from(rowsByKey)
-      .filter(([, row]) => row.expanded)
-      .map(([key]) => key),
+  const [contents] = await file.load_contents_async(cancellable);
+  // Recheck the loaded data in case the file changed after its metadata read.
+  requireConfigFileSize(contents.length);
+  return parseConfigJson(
+    new TextDecoder().decode(contents),
+    MAX_CONFIG_FILE_SIZE,
   );
 }
 
@@ -285,24 +357,30 @@ function createPresetModel(presets) {
   return model;
 }
 
-function getAppKeys(rawConfigs) {
-  return Object.keys(rawConfigs)
-    .filter((key) => !key.startsWith("@"))
+function getConfigKeys(configs, presets = false) {
+  return Object.keys(configs)
+    .filter((key) => key.startsWith("@") === presets)
     .sort((a, b) => a.localeCompare(b));
 }
 
-function getPresetConfig(rawConfigs, presetKey) {
-  const presetValue = rawConfigs[presetKey];
-  return isConfigObject(presetValue) ? presetValue : {};
+function getPresetKeys(configs) {
+  return getConfigKeys(configs, true);
+}
+
+function serializePresets(configs) {
+  const presets = getPresetKeys(configs);
+  return JSON.stringify(
+    Object.fromEntries(presets.map((key) => [key, configs[key]])),
+  );
+}
+
+function getPresetConfig(configs, presetKey) {
+  return isConfigObject(configs[presetKey]) ? configs[presetKey] : {};
 }
 
 function getConfigOrigin(rules, key, baseConfigs) {
-  if (!Object.hasOwn(rules, key)) return "Built-in";
+  if (!findEquivalentConfigKey(rules, key)) return "Built-in";
   return Object.hasOwn(baseConfigs, key) ? "Modified" : "Custom";
-}
-
-function getBaseConfig(key, baseConfigs) {
-  return Object.hasOwn(baseConfigs, key) ? copyConfig(baseConfigs[key]) : {};
 }
 
 function getResetTitle(key, type, baseConfigs) {
@@ -311,47 +389,39 @@ function getResetTitle(key, type, baseConfigs) {
     : "Reset rules";
 }
 
+function isValidConfigKey(candidate, preset) {
+  return Boolean(candidate) &&
+    candidate.startsWith("@") === preset &&
+    !getSettingsConfigMapError({ [candidate]: {} });
+}
+
 function createConfigEditor() {
-  const enabledRow = new Adw.SwitchRow({ title: "Enabled" });
-  const widthRow = createSpinRow({
+  const enabled = new Adw.SwitchRow({ title: "Enabled" });
+  const width = createSpinRow({
     title: "Border width",
     lower: 0,
-    upper: 50,
+    upper: MAX_BORDER_WIDTH,
   });
-
-  const marginsStrip = createNumberStrip(
+  const margins = createNumberStrip(
     "Margins",
-    [
-      ["top", "T"],
-      ["right", "R"],
-      ["bottom", "B"],
-      ["left", "L"],
-    ],
-    -100,
-    100,
+    [["top", "T"], ["right", "R"], ["bottom", "B"], ["left", "L"]],
+    -MAX_BORDER_MARGIN,
+    MAX_BORDER_MARGIN,
   );
-  const radiusStrip = createNumberStrip(
+  const radius = createNumberStrip(
     "Corner radius",
-    [
-      ["tl", "TL"],
-      ["tr", "TR"],
-      ["bl", "BL"],
-      ["br", "BR"],
-    ],
+    [["tl", "TL"], ["tr", "TR"], ["bl", "BL"], ["br", "BR"]],
     0,
-    200,
+    MAX_BORDER_RADIUS,
   );
-
-  const activeColorRow = new Adw.EntryRow({
-    title: "Active border color",
-  });
-  const inactiveColorRow = new Adw.EntryRow({
-    title: "Inactive border color",
-  });
-  setEntryRowPlaceholder(activeColorRow, "inherit or rgba(...)");
-  setEntryRowPlaceholder(inactiveColorRow, "inherit or rgba(...)");
-  attachColorPicker(activeColorRow);
-  attachColorPicker(inactiveColorRow);
+  const activeColor = createColorRow(
+    "Active border color",
+    "inherit or rgba(...)",
+  );
+  const inactiveColor = createColorRow(
+    "Inactive border color",
+    "inherit or rgba(...)",
+  );
 
   const resetRow = new Adw.ActionRow({
     title: "Reset rules",
@@ -360,244 +430,114 @@ function createConfigEditor() {
   const resetButton = new Gtk.Button({ label: "Reset", css_classes: ["flat"] });
   resetRow.add_suffix(resetButton);
 
-  const customRows = [
-    enabledRow,
-    widthRow,
-    marginsStrip.row,
-    radiusStrip.row,
-    activeColorRow,
-    inactiveColorRow,
+  const rows = [
+    enabled,
+    width,
+    margins.row,
+    radius.row,
+    activeColor,
+    inactiveColor,
     resetRow,
   ];
 
-  let updating = false;
+  let syncingFields = false;
+  const fields = [];
+  const addField = (control, property, read, mutate) => {
+    fields.push({
+      show: (config) => {
+        control[property] = read(config);
+      },
+      connect: (change) =>
+        control.connect(`notify::${property}`, () => change(mutate)),
+    });
+  };
+  addField(enabled, "active", (config) => config.enabled ?? true, (config) => {
+    config.enabled = enabled.active;
+  });
+  addField(width, "value", (config) => config.width ?? 0, (config) => {
+    config.width = Math.round(width.value);
+  });
+  for (
+    const [key, strip, normalize] of [
+      ["margins", margins, normalizeMargins],
+      ["radius", radius, normalizeRadius],
+    ]
+  ) {
+    for (const [name, control] of Object.entries(strip.controls)) {
+      addField(
+        control,
+        "value",
+        (config) => normalize(config[key])[name],
+        (config) => {
+          if (!isConfigObject(config[key])) {
+            config[key] = normalize(config[key]);
+          }
+          config[key][name] = Math.round(control.value);
+        },
+      );
+    }
+  }
+  for (
+    const [key, row] of [
+      ["activeColor", activeColor],
+      ["inactiveColor", inactiveColor],
+    ]
+  ) {
+    addField(row, "text", (config) => config[key] ?? "", (config) => {
+      const text = row.text.trim();
+      if (text) config[key] = text;
+      else delete config[key];
+    });
+  }
 
-  function setCustomSensitive(sensitive) {
-    for (const row of customRows) row.sensitive = sensitive;
+  function setEditable(editable) {
+    for (const row of rows) row.sensitive = editable;
   }
 
   function applyConfig(config) {
-    const margins = normalizeMargins(config.margins);
-    const radius = normalizeRadius(config.radius);
-    updating = true;
-    enabledRow.active = config.enabled ?? true;
-    widthRow.value = config.width ?? 0;
-    for (const [key, control] of Object.entries(marginsStrip.controls)) {
-      control.value = margins[key];
-    }
-    for (const [key, control] of Object.entries(radiusStrip.controls)) {
-      control.value = radius[key];
-    }
-    activeColorRow.text = config.activeColor ?? "";
-    inactiveColorRow.text = config.inactiveColor ?? "";
-    updating = false;
+    syncingFields = true;
+    for (const field of fields) field.show(config);
+    syncingFields = false;
   }
 
-  function connectHandlers({ isCustom, setConfigValue, onReset }) {
+  function connectHandlers({ isEditable, updateConfig, onReset }) {
     resetButton.connect("clicked", () => {
-      if (!isCustom()) return;
+      if (!isEditable()) return;
       onReset();
     });
 
-    enabledRow.connect("notify::active", () => {
-      if (updating || !isCustom()) return;
-      setConfigValue((config) => {
-        config.enabled = enabledRow.active;
-      });
-    });
-    widthRow.connect("notify::value", () => {
-      if (updating || !isCustom()) return;
-      setConfigValue((config) => {
-        config.width = Math.round(widthRow.value);
-      });
-    });
-
-    const connectNumberControls = (controls, field, normalize) => {
-      for (const [key, control] of Object.entries(controls)) {
-        control.connect("notify::value", () => {
-          if (updating || !isCustom()) return;
-          setConfigValue((config) => {
-            if (!isConfigObject(config[field])) {
-              config[field] = normalize(config[field]);
-            }
-            config[field][key] = Math.round(control.value);
-          });
-        });
-      }
-    };
-    connectNumberControls(marginsStrip.controls, "margins", normalizeMargins);
-    connectNumberControls(radiusStrip.controls, "radius", normalizeRadius);
-
-    for (
-      const [row, field] of [
-        [activeColorRow, "activeColor"],
-        [inactiveColorRow, "inactiveColor"],
-      ]
-    ) {
-      row.connect("notify::text", () => {
-        if (updating || !isCustom()) return;
-        const text = row.text.trim();
-        setConfigValue((config) => {
-          if (text) config[field] = text;
-          else delete config[field];
-        });
+    for (const field of fields) {
+      field.connect((mutate) => {
+        if (syncingFields || !isEditable()) return;
+        updateConfig(mutate);
       });
     }
   }
 
   return {
-    rows: customRows,
+    rows,
     resetRow,
     applyConfig,
-    setCustomSensitive,
+    setEditable,
     connectHandlers,
   };
 }
 
-function buildGlobalPage(settings, configStore) {
-  const page = new Adw.PreferencesPage({
-    title: "Global",
-    icon_name: "preferences-system-symbolic",
-  });
-
-  const behaviorGroup = new Adw.PreferencesGroup({ title: "Behavior" });
-  const defaultEnabledRow = new Adw.SwitchRow({
-    title: "Enable by default",
-    subtitle: "Enable borders on all windows without opt-in config",
-  });
-  const radiusEnabledRow = new Adw.SwitchRow({
-    title: "Rounded corners",
-    subtitle: "Toggle border radius rendering on or off",
-  });
-  const maximizedBordersRow = new Adw.SwitchRow({
-    title: "Smart maximize",
-    subtitle: "Enable smart borders on partially maximized windows",
-  });
-  const modalEnabledRow = new Adw.SwitchRow({
-    title: "Enable borders on modal/dialog windows",
-    subtitle: "Borders are enabled only on top-level windows without this",
-  });
-  const verboseLoggingRow = new Adw.SwitchRow({
-    title: "Verbose logging",
-    subtitle: "Log detailed track/untrack events for debugging",
-  });
-  const useShippedConfigsRow = new Adw.SwitchRow({
-    title: "Use shipped app configs",
-    subtitle: "Layer your rules over the presets and app configs we provide",
-    active: configStore.useShippedConfigs,
-  });
-  let syncingShippedConfigs = false;
-  useShippedConfigsRow.connect("notify::active", () => {
-    if (syncingShippedConfigs) return;
-    configStore.setUseShippedConfigs(
-      useShippedConfigsRow.active,
-      GLOBAL_SOURCE,
-    );
-  });
-  configStore.subscribe(({ useShippedConfigs }) => {
-    syncingShippedConfigs = true;
-    useShippedConfigsRow.active = useShippedConfigs;
-    syncingShippedConfigs = false;
-  });
-  behaviorGroup.add(defaultEnabledRow);
-  behaviorGroup.add(radiusEnabledRow);
-  behaviorGroup.add(maximizedBordersRow);
-  behaviorGroup.add(modalEnabledRow);
-  behaviorGroup.add(verboseLoggingRow);
-  behaviorGroup.add(useShippedConfigsRow);
-
-  bindSetting(settings, "radius-enabled", radiusEnabledRow, "active");
-  bindSetting(settings, "default-enabled", defaultEnabledRow, "active");
-  bindSetting(
-    settings,
-    "default-maximized-borders",
-    maximizedBordersRow,
-    "active",
-  );
-  bindSetting(settings, "modal-enabled", modalEnabledRow, "active");
-  bindSetting(settings, "verbose-logging", verboseLoggingRow, "active");
-
-  const defaultsGroup = new Adw.PreferencesGroup({ title: "Defaults" });
-  const widthRow = createSpinRow({
-    title: "Border width",
-    lower: 0,
-    upper: 50,
-  });
-  const marginsRow = createSpinRow({
-    title: "Margins",
-    subtitle: "Applied equally to all sides",
-    lower: -100,
-    upper: 100,
-  });
-  const radiusRow = createSpinRow({
-    title: "Corner radius",
-    lower: 0,
-    upper: 200,
-  });
-  defaultsGroup.add(widthRow);
-  defaultsGroup.add(marginsRow);
-  defaultsGroup.add(radiusRow);
-
-  bindSetting(settings, "default-width", widthRow, "value");
-  bindSetting(settings, "default-margins", marginsRow, "value");
-  bindSetting(settings, "default-radius", radiusRow, "value");
-
-  const colorsGroup = new Adw.PreferencesGroup({ title: "Colors" });
-  const activeColorRow = new Adw.EntryRow({
-    title: "Active border color",
-    text: settings.get_string("default-active-color"),
-  });
-  const inactiveColorRow = new Adw.EntryRow({
-    title: "Inactive border color",
-    text: settings.get_string("default-inactive-color"),
-  });
-  setEntryRowPlaceholder(activeColorRow, "auto or rgba(...)");
-  setEntryRowPlaceholder(inactiveColorRow, "rgba(...)");
-  attachColorPicker(activeColorRow);
-  attachColorPicker(inactiveColorRow);
-  colorsGroup.add(activeColorRow);
-  colorsGroup.add(inactiveColorRow);
-
-  bindSetting(settings, "default-active-color", activeColorRow, "text");
-  bindSetting(settings, "default-inactive-color", inactiveColorRow, "text");
-
-  page.add(behaviorGroup);
-  page.add(defaultsGroup);
-  page.add(colorsGroup);
-  return page;
-}
-
-function getPresetKeys(rawConfigs) {
-  return Object.keys(rawConfigs)
-    .filter((key) => key.startsWith("@"))
-    .sort((a, b) => a.localeCompare(b));
-}
-
-function serializePresets(rawConfigs) {
-  const presets = getPresetKeys(rawConfigs);
-  return JSON.stringify(
-    Object.fromEntries(presets.map((key) => [key, rawConfigs[key]])),
-  );
-}
-
 function buildConfigRow({
   key,
-  getRawConfigs,
-  saveConfigs,
-  saveConfigsDebounced,
+  window,
+  configStore,
+  source,
   refreshList,
   presets,
-  removeConfig = (configKey, configs) => {
-    delete configs[configKey];
-    return true;
-  },
-  getOrigin = () => "Custom",
-  getResetValue = () => ({}),
-  resetTitle = "Reset rules",
-  validateKey = () => true,
-  updateReferences = () => {},
 }) {
   const isPreset = key.startsWith("@");
+  const type = isPreset ? "preset" : "config";
+  const getConfigs = () => configStore.configs;
+  const updateConfigs = createConfigUpdater(window, configStore, source);
+  const getOrigin = (configKey) =>
+    getConfigOrigin(configStore.rules, configKey, configStore.baseConfigs);
+  const getResetValue = (configKey) => configStore.getBaseConfig(configKey);
   let currentKey = key;
   const expander = new Adw.ExpanderRow({ title: currentKey });
   const originLabel = new Gtk.Label({ css_classes: ["dim-label"] });
@@ -605,7 +545,7 @@ function buildConfigRow({
     originLabel.label = getOrigin(currentKey);
   };
   updateOrigin();
-  const initialValue = getRawConfigs()[currentKey];
+  const initialValue = getConfigs()[currentKey];
   expander.subtitle = isPreset
     ? "Preset definition"
     : typeof initialValue === "string" && initialValue.startsWith("@")
@@ -619,9 +559,21 @@ function buildConfigRow({
     valign: Gtk.Align.CENTER,
   });
   removeButton.connect("clicked", () => {
-    const rawConfigs = getRawConfigs();
-    if (!removeConfig(currentKey, rawConfigs)) return;
-    saveConfigs();
+    if (
+      !updateConfigs((configs) => {
+        if (isPreset) {
+          const reference = Object.entries(configs).find(
+            ([, value]) => value === currentKey,
+          );
+          if (reference) {
+            showToast(window, `${currentKey} is used by ${reference[0]}`);
+            return false;
+          }
+        }
+        delete configs[currentKey];
+        return true;
+      })
+    ) return;
     refreshList();
   });
   expander.add_suffix(removeButton);
@@ -640,36 +592,51 @@ function buildConfigRow({
       css_classes: ["flat"],
     });
     keyRow.add_suffix(renameButton);
+    const editor = createConfigEditor();
+    editor.resetRow.title = getResetTitle(
+      currentKey,
+      type,
+      configStore.baseConfigs,
+    );
 
     const tryRename = () => {
       const nextKey = keyRow.text.trim();
-      if (!nextKey || nextKey === currentKey) {
+      if (
+        nextKey === currentKey ||
+        !isValidConfigKey(nextKey, isPreset) ||
+        findEquivalentConfigKey(getConfigs(), nextKey)
+      ) {
         keyRow.text = currentKey;
         return;
       }
-      if (!validateKey(nextKey)) {
+      if (
+        !updateConfigs((configs) => {
+          configs[nextKey] = configs[currentKey];
+          delete configs[currentKey];
+          if (isPreset) {
+            for (const [configKey, value] of Object.entries(configs)) {
+              if (value === currentKey) configs[configKey] = nextKey;
+            }
+          }
+        })
+      ) {
         keyRow.text = currentKey;
         return;
       }
-      const rawConfigs = getRawConfigs();
-      const equivalentKey = findEquivalentConfigKey(rawConfigs, nextKey);
-      if (equivalentKey && equivalentKey !== currentKey) {
-        keyRow.text = currentKey;
-        return;
-      }
-      rawConfigs[nextKey] = rawConfigs[currentKey];
-      delete rawConfigs[currentKey];
-      updateReferences(currentKey, nextKey, rawConfigs);
       currentKey = nextKey;
       expander.title = currentKey;
       keyRow.text = currentKey;
-      saveConfigs();
+      editor.resetRow.title = getResetTitle(
+        currentKey,
+        type,
+        configStore.baseConfigs,
+      );
       updateOrigin();
       refreshList();
     };
 
     renameButton.connect("clicked", tryRename);
-    keyRow.connect("activate", tryRename);
+    keyRow.connect("entry-activated", tryRename);
     expander.add_row(keyRow);
 
     let presetRow = null;
@@ -681,107 +648,100 @@ function buildConfigRow({
       expander.add_row(presetRow);
     }
 
-    const editor = createConfigEditor();
-    editor.resetRow.title = resetTitle;
     for (const row of editor.rows) expander.add_row(row);
 
-    let updating = false;
-    let isCustom = true;
+    let syncingPreset = false;
+    let usesPreset = false;
 
-    function ensureCustomConfig(fallbackPreset) {
-      const rawConfigs = getRawConfigs();
-      if (isConfigObject(rawConfigs[currentKey])) return rawConfigs[currentKey];
-      if (typeof rawConfigs[currentKey] === "string" && fallbackPreset) {
-        const presetValue = rawConfigs[rawConfigs[currentKey]];
-        rawConfigs[currentKey] = copyConfig(
-          isConfigObject(presetValue) ? presetValue : {},
-        );
-      } else {
-        rawConfigs[currentKey] = {};
+    function updateConfig(updater) {
+      if (
+        updateConfigs((configs) => {
+          const value = configs[currentKey];
+          configs[currentKey] = isConfigObject(value) ? value : {};
+          updater(configs[currentKey]);
+        }, true)
+      ) updateOrigin();
+      else setPresetSelection();
+    }
+
+    function replaceConfig(value) {
+      const updated = updateConfigs((configs) => {
+        configs[currentKey] = value;
+      });
+      if (updated) updateOrigin();
+      return updated;
+    }
+
+    function showConfig(config, preset = null) {
+      usesPreset = !!preset;
+      if (!isPreset) {
+        expander.subtitle = preset ? `Preset: ${preset}` : "Custom";
       }
-      return rawConfigs[currentKey];
-    }
-
-    function setConfigValue(updater) {
-      const config = ensureCustomConfig(false);
-      updater(config);
-      saveConfigsDebounced();
-      updateOrigin();
-    }
-
-    function setConfigObject(config) {
-      const rawConfigs = getRawConfigs();
-      rawConfigs[currentKey] = config;
-      saveConfigs();
-      updateOrigin();
+      editor.setEditable(!usesPreset);
+      editor.applyConfig(config);
     }
 
     function setPresetSelection() {
-      const rawConfigs = getRawConfigs();
+      const configs = getConfigs();
       if (isPreset) {
-        isCustom = true;
-        editor.setCustomSensitive(true);
-        editor.applyConfig(
-          isConfigObject(rawConfigs[currentKey]) ? rawConfigs[currentKey] : {},
+        showConfig(
+          isConfigObject(configs[currentKey]) ? configs[currentKey] : {},
         );
         return;
       }
-      const value = rawConfigs[currentKey];
-      if (typeof value === "string" && value.startsWith("@")) {
-        const index = presets.indexOf(value);
-        updating = true;
-        presetRow.selected = index >= 0 ? index + 1 : 0;
-        updating = false;
-        expander.subtitle = `Preset: ${value}`;
-        isCustom = false;
-        editor.setCustomSensitive(false);
-        editor.applyConfig(getPresetConfig(rawConfigs, value));
-      } else {
-        updating = true;
-        presetRow.selected = 0;
-        updating = false;
-        expander.subtitle = "Custom";
-        isCustom = true;
-        editor.setCustomSensitive(true);
-        editor.applyConfig(isConfigObject(value) ? value : {});
-      }
+      const value = configs[currentKey];
+      const preset = typeof value === "string" && value.startsWith("@")
+        ? value
+        : null;
+      syncingPreset = true;
+      presetRow.selected = preset
+        ? Math.max(0, presets.indexOf(preset) + 1)
+        : 0;
+      syncingPreset = false;
+      showConfig(
+        preset
+          ? getPresetConfig(configs, preset)
+          : isConfigObject(value)
+          ? value
+          : {},
+        preset,
+      );
     }
 
     if (presetRow) {
       presetRow.connect("notify::selected", () => {
-        if (updating) return;
+        if (syncingPreset) return;
         const selected = presetRow.selected;
+        let preset = null;
+        let value;
         if (selected === 0) {
-          const config = ensureCustomConfig(true);
-          isCustom = true;
-          expander.subtitle = "Custom";
-          editor.setCustomSensitive(true);
-          editor.applyConfig(config);
-          saveConfigs();
-          updateOrigin();
-          return;
+          const configs = getConfigs();
+          const current = configs[currentKey];
+          value = typeof current === "string"
+            ? copyConfig(getPresetConfig(configs, current))
+            : {};
+        } else {
+          preset = presets[selected - 1];
+          if (!preset) return;
+          value = preset;
         }
 
-        const preset = presets[selected - 1];
-        if (!preset) return;
-        const rawConfigs = getRawConfigs();
-        rawConfigs[currentKey] = preset;
-        saveConfigs();
-        updateOrigin();
-        isCustom = false;
-        expander.subtitle = `Preset: ${preset}`;
-        editor.setCustomSensitive(false);
-        editor.applyConfig(getPresetConfig(rawConfigs, preset));
+        if (!replaceConfig(value)) {
+          setPresetSelection();
+          return;
+        }
+        showConfig(
+          preset ? getPresetConfig(getConfigs(), preset) : value,
+          preset,
+        );
       });
     }
 
     editor.connectHandlers({
-      isCustom: () => isCustom,
-      setConfigValue,
+      isEditable: () => !usesPreset,
+      updateConfig,
       onReset: () => {
-        if (!isCustom) return;
-        setConfigObject(getResetValue(currentKey));
-        refreshList();
+        if (replaceConfig(getResetValue(currentKey))) refreshList();
       },
     });
 
@@ -794,20 +754,283 @@ function buildConfigRow({
   return expander;
 }
 
-function buildConfigsPage(window, configStore) {
+function buildConfigListPage(window, configStore, {
+  title,
+  icon,
+  source,
+  addDescription,
+  listDescription,
+  leading,
+  placeholder,
+  header,
+  emptyTitle,
+  getKeys,
+  getKey: formatKey,
+  isValid,
+  findExisting: findConfig,
+  afterRefresh,
+  beforeOpen,
+  invalidMessage,
+  connect,
+}) {
   const page = new Adw.PreferencesPage({
-    title: "App Configs",
-    icon_name: "application-x-executable-symbolic",
+    title,
+    icon_name: icon,
   });
-  const getRawConfigs = () => configStore.configs;
-  const saveConfigs = () => configStore.save(APP_CONFIG_SOURCE);
-  const saveConfigsDebounced = () =>
-    configStore.scheduleSave(APP_CONFIG_SOURCE);
+  const addGroup = new Adw.PreferencesGroup({
+    title: "Quick Add",
+    description: addDescription,
+  });
+  const addBox = new Gtk.Box({
+    spacing: 8,
+    margin_top: 8,
+    margin_bottom: 8,
+    margin_start: 12,
+    margin_end: 12,
+  });
+  const entry = new Gtk.Entry({
+    hexpand: true,
+    placeholder_text: placeholder,
+  });
+  const button = new Gtk.Button({
+    label: "Add",
+    css_classes: ["suggested-action"],
+    valign: Gtk.Align.CENTER,
+  });
+  addBox.append(leading);
+  addBox.append(entry);
+  addBox.append(button);
+  const addRow = new Adw.PreferencesRow();
+  addRow.set_child(addBox);
+  addGroup.add(addRow);
+  const listGroup = new Adw.PreferencesGroup({
+    title,
+    description: listDescription,
+  });
+  if (header) listGroup.add(header);
+
+  const rows = [];
+  const rowsByKey = new Map();
+  const controller = {
+    rowsByKey,
+    updateConfigs: createConfigUpdater(window, configStore, source),
+  };
+  const getKey = () => formatKey(entry.text.trim());
+  const findExisting = (key) => findConfig(configStore.configs, key);
+  const updateQuickAdd = () => {
+    const key = getKey();
+    button.label = findExisting(key) ? "Open" : "Add";
+    button.sensitive = isValid(key);
+  };
+  controller.refresh = () => {
+    const expanded = new Set(
+      Array.from(rowsByKey)
+        .filter(([, row]) => row.expanded)
+        .map(([key]) => key),
+    );
+    for (const row of rows) listGroup.remove(row);
+    rows.length = 0;
+    rowsByKey.clear();
+
+    const configs = configStore.configs;
+    const keys = getKeys(configs);
+    const presets = getConfigKeys(configs, true);
+    if (keys.length === 0) {
+      rows.push(
+        new Adw.ActionRow({
+          title: emptyTitle,
+          subtitle: "Add one above to get started.",
+        }),
+      );
+    } else {
+      for (const key of keys) {
+        const row = buildConfigRow({
+          key,
+          window,
+          configStore,
+          source,
+          refreshList: controller.refresh,
+          presets,
+        });
+        rows.push(row);
+        rowsByKey.set(key, row);
+        row.expanded = expanded.has(key);
+      }
+    }
+    for (const row of rows) listGroup.add(row);
+    afterRefresh?.(controller, keys, configs);
+    updateQuickAdd();
+  };
+
+  button.connect("clicked", () => {
+    const key = getKey();
+    if (!isValid(key)) {
+      showToast(window, invalidMessage);
+      return;
+    }
+    let openKey = findExisting(key);
+    if (!openKey) {
+      if (
+        !controller.updateConfigs((configs) => {
+          configs[key] = configStore.getBaseConfig(key);
+        })
+      ) return;
+      controller.refresh();
+      openKey = findExisting(key);
+      showToast(window, `Added ${key}`);
+    }
+    beforeOpen?.();
+    controller.rowsByKey.get(openKey).expanded = true;
+    entry.text = "";
+    entry.grab_focus();
+  });
+  entry.connect("changed", updateQuickAdd);
+  entry.connect("activate", () => button.emit("clicked"));
+
+  connect?.(controller, updateQuickAdd);
+  controller.refresh();
+  page.add(addGroup);
+  page.add(listGroup);
+  return page;
+}
+
+function buildGlobalPage(window, settings, configStore) {
+  const page = new Adw.PreferencesPage({
+    title: "Global",
+    icon_name: "preferences-system-symbolic",
+  });
+
+  const behaviorGroup = new Adw.PreferencesGroup({ title: "Behavior" });
+  for (
+    const [key, title, subtitle] of [
+      [
+        "default-enabled",
+        "Enable by default",
+        "Enable borders on all windows without opt-in config",
+      ],
+      [
+        "radius-enabled",
+        "Rounded corners",
+        "Toggle border radius rendering on or off",
+      ],
+      [
+        "default-maximized-borders",
+        "Smart maximize",
+        "Enable smart borders on partially maximized windows",
+      ],
+      [
+        "modal-enabled",
+        "Enable borders on modal/dialog windows",
+        "Borders are enabled only on top-level windows without this",
+      ],
+      [
+        "verbose-logging",
+        "Verbose logging",
+        "Log detailed track/untrack events for debugging",
+      ],
+    ]
+  ) {
+    const row = new Adw.SwitchRow({ title, subtitle });
+    bindSetting(settings, key, row, "active");
+    behaviorGroup.add(row);
+  }
+  const useShippedConfigsRow = new Adw.SwitchRow({
+    title: "Use shipped app configs",
+    subtitle: "Layer your rules over the presets and app configs we provide",
+    active: configStore.useShippedConfigs,
+  });
+  let syncingShippedConfigs = false;
+  useShippedConfigsRow.connect("notify::active", () => {
+    if (syncingShippedConfigs) return;
+    tryAction(
+      window,
+      () => configStore.setUseShippedConfigs(useShippedConfigsRow.active),
+    );
+  });
+  configStore.subscribe(({ useShippedConfigs }) => {
+    syncingShippedConfigs = true;
+    useShippedConfigsRow.active = useShippedConfigs;
+    syncingShippedConfigs = false;
+  });
+  behaviorGroup.add(useShippedConfigsRow);
+
+  const defaultsGroup = new Adw.PreferencesGroup({ title: "Defaults" });
+  for (
+    const [key, params] of [
+      ["default-width", {
+        title: "Border width",
+        lower: 0,
+        upper: MAX_BORDER_WIDTH,
+      }],
+      ["default-margins", {
+        title: "Margins",
+        subtitle: "Applied equally to all sides",
+        lower: -MAX_BORDER_MARGIN,
+        upper: MAX_BORDER_MARGIN,
+      }],
+      ["default-radius", {
+        title: "Corner radius",
+        lower: 0,
+        upper: MAX_BORDER_RADIUS,
+      }],
+    ]
+  ) {
+    const row = createSpinRow(params);
+    bindSetting(settings, key, row, "value");
+    defaultsGroup.add(row);
+  }
+
+  const colorsGroup = new Adw.PreferencesGroup({ title: "Colors" });
+  for (
+    const [key, title, placeholder] of [
+      ["default-active-color", "Active border color", "auto or rgba(...)"],
+      ["default-inactive-color", "Inactive border color", "rgba(...)"],
+    ]
+  ) {
+    const row = createColorRow(title, placeholder);
+    bindAppliedTextSetting(window, settings, key, row);
+    colorsGroup.add(row);
+  }
+
+  page.add(behaviorGroup);
+  page.add(defaultsGroup);
+  page.add(colorsGroup);
+  return page;
+}
+
+function buildPresetsPage(window, configStore) {
+  let lastPresets = serializePresets(configStore.configs);
+
+  return buildConfigListPage(window, configStore, {
+    title: "Presets",
+    icon: "view-list-symbolic",
+    source: PRESET_SOURCE,
+    addDescription: "Add a preset now, then open it to set optional values.",
+    listDescription: "Preset definitions can be referenced by app configs.",
+    leading: new Gtk.Label({ label: "@" }),
+    placeholder: "myPreset",
+    emptyTitle: "No presets yet",
+    getKeys: getPresetKeys,
+    getKey: (input) => !input || input.startsWith("@") ? input : `@${input}`,
+    isValid: (candidate) => isValidConfigKey(candidate, true),
+    findExisting: (configs, key) => Object.hasOwn(configs, key) && key,
+    afterRefresh: (_controller, _keys, configs) => {
+      lastPresets = serializePresets(configs);
+    },
+    invalidMessage: "Enter a preset name",
+    connect: (controller) => {
+      configStore.subscribe(({ configs, source }) => {
+        const nextPresets = serializePresets(configs);
+        if (source !== PRESET_SOURCE && nextPresets !== lastPresets) {
+          controller.refresh();
+        }
+      });
+    },
+  });
+}
+
+function buildConfigsPage(window, configStore) {
   const typePrefixes = ["class:", "app:", "regex.class:", "regex.app:"];
-  const isValidKey = (candidate) =>
-    Boolean(candidate) &&
-    !candidate.startsWith("@") &&
-    !getConfigMapError({ [candidate]: {} });
 
   const typeDropDown = Gtk.DropDown.new_from_strings([
     "Window Class",
@@ -816,20 +1039,6 @@ function buildConfigsPage(window, configStore) {
     "App ID Regex",
   ]);
   typeDropDown.valign = Gtk.Align.CENTER;
-  const {
-    group: addGroup,
-    entry: addEntry,
-    button: addButton,
-  } = createQuickAddGroup({
-    description: "Add a key now, then open it to customize optional values.",
-    leading: typeDropDown,
-    placeholder: "org.gnome.Terminal",
-  });
-
-  const listGroup = new Adw.PreferencesGroup({
-    title: "App Configs",
-    description: "Unset values inherit from global defaults.",
-  });
   const searchBox = new Gtk.Box({
     spacing: 8,
     margin_top: 6,
@@ -846,282 +1055,51 @@ function buildConfigsPage(window, configStore) {
   searchBox.append(countLabel);
   const searchRow = new Adw.PreferencesRow();
   searchRow.set_child(searchBox);
-  listGroup.add(searchRow);
 
-  const listRows = [];
-  const rowsByKey = new Map();
-
-  function getDraftKey() {
-    const input = addEntry.text.trim();
-    if (!input) return "";
-    if (typePrefixes.some((prefix) => input.startsWith(prefix))) return input;
-    return `${typePrefixes[typeDropDown.selected]}${input}`;
-  }
-
-  function updateAddButtonState() {
-    const key = getDraftKey();
-    const exists = findEquivalentConfigKey(configStore.configs, key);
-    addButton.label = exists ? "Open" : "Add";
-    addButton.sensitive = isValidKey(key);
-  }
-
-  function applyFilter() {
+  function applyFilter(controller) {
     const query = searchEntry.text.trim().toLocaleLowerCase();
     let visible = 0;
-    for (const [key, row] of rowsByKey) {
+    for (const [key, row] of controller.rowsByKey) {
       row.visible = !query || key.toLocaleLowerCase().includes(query);
       if (row.visible) visible++;
     }
-    countLabel.label = query ? `${visible} of ${rowsByKey.size}` : `${visible}`;
+    countLabel.label = query
+      ? `${visible} of ${controller.rowsByKey.size}`
+      : `${visible}`;
   }
 
-  function refreshList() {
-    const expandedKeys = getExpandedKeys(rowsByKey);
-    clearGroupRows(listGroup, listRows);
-    rowsByKey.clear();
-
-    const rawConfigs = configStore.configs;
-    const appKeys = getAppKeys(rawConfigs);
-    const presets = getPresetKeys(rawConfigs);
-    if (appKeys.length === 0) {
-      const row = new Adw.ActionRow({
-        title: "No configs yet",
-        subtitle: "Add one above to get started.",
+  return buildConfigListPage(window, configStore, {
+    title: "App Configs",
+    icon: "application-x-executable-symbolic",
+    source: APP_CONFIG_SOURCE,
+    addDescription: "Add a key now, then open it to customize optional values.",
+    listDescription: "Unset values inherit from global defaults.",
+    leading: typeDropDown,
+    placeholder: "org.gnome.Terminal",
+    header: searchRow,
+    emptyTitle: "No configs yet",
+    getKeys: (configs) => getConfigKeys(configs),
+    getKey: (input) => {
+      if (!input) return "";
+      if (typePrefixes.some((prefix) => input.startsWith(prefix))) return input;
+      return `${typePrefixes[typeDropDown.selected]}${input}`;
+    },
+    isValid: (candidate) => isValidConfigKey(candidate, false),
+    findExisting: findEquivalentConfigKey,
+    afterRefresh: (controller) => applyFilter(controller),
+    beforeOpen: () => {
+      searchEntry.text = "";
+    },
+    invalidMessage: "Enter a valid config key",
+    connect: (controller, updateQuickAdd) => {
+      typeDropDown.connect("notify::selected", updateQuickAdd);
+      searchEntry.connect("search-changed", () => applyFilter(controller));
+      configStore.subscribe(({ source }) => {
+        if (source !== APP_CONFIG_SOURCE) controller.refresh();
+        else updateQuickAdd();
       });
-      listGroup.add(row);
-      listRows.push(row);
-      countLabel.label = "0";
-      updateAddButtonState();
-      return;
-    }
-
-    for (const key of appKeys) {
-      const row = buildConfigRow({
-        key,
-        getRawConfigs,
-        saveConfigs,
-        saveConfigsDebounced,
-        refreshList,
-        presets,
-        getOrigin: (configKey) =>
-          getConfigOrigin(
-            configStore.rules,
-            configKey,
-            configStore.baseConfigs,
-          ),
-        getResetValue: (configKey) =>
-          getBaseConfig(configKey, configStore.baseConfigs),
-        resetTitle: getResetTitle(
-          key,
-          "config",
-          configStore.baseConfigs,
-        ),
-        validateKey: isValidKey,
-      });
-      listGroup.add(row);
-      listRows.push(row);
-      rowsByKey.set(key, row);
-      row.expanded = expandedKeys.has(key);
-    }
-
-    applyFilter();
-    updateAddButtonState();
-  }
-
-  addButton.connect("clicked", () => {
-    const key = getDraftKey();
-    if (!isValidKey(key)) {
-      showToast(window, "Enter a valid config key");
-      return;
-    }
-    const rawConfigs = configStore.configs;
-    const existingKey = findEquivalentConfigKey(rawConfigs, key);
-    if (!existingKey) {
-      rawConfigs[key] = getBaseConfig(key, configStore.baseConfigs);
-      saveConfigs();
-      refreshList();
-      showToast(window, `Added ${key}`);
-    }
-    searchEntry.text = "";
-    rowsByKey.get(existingKey ?? key).expanded = true;
-    addEntry.text = "";
-    addEntry.grab_focus();
+    },
   });
-
-  addEntry.connect("changed", updateAddButtonState);
-  addEntry.connect("activate", () => addButton.emit("clicked"));
-  typeDropDown.connect("notify::selected", updateAddButtonState);
-  searchEntry.connect("search-changed", applyFilter);
-  configStore.subscribe(({ source }) => {
-    if (source !== APP_CONFIG_SOURCE) {
-      refreshList();
-      return;
-    }
-    updateAddButtonState();
-  });
-
-  refreshList();
-
-  page.add(addGroup);
-  page.add(listGroup);
-  return page;
-}
-
-function buildPresetsPage(window, configStore) {
-  const page = new Adw.PreferencesPage({
-    title: "Presets",
-    icon_name: "view-list-symbolic",
-  });
-  const getRawConfigs = () => configStore.configs;
-  const saveConfigs = () => configStore.save(PRESET_SOURCE);
-  const saveConfigsDebounced = () => configStore.scheduleSave(PRESET_SOURCE);
-  const isValidKey = (candidate) =>
-    Boolean(candidate?.startsWith("@")) &&
-    !getConfigMapError({ [candidate]: {} });
-
-  function updateReferences(oldKey, newKey, configs) {
-    for (const [configKey, value] of Object.entries(configs)) {
-      if (typeof value === "string" && value === oldKey) {
-        configs[configKey] = newKey;
-      }
-    }
-  }
-
-  function removePreset(presetKey, configs) {
-    const reference = Object.entries(configs).find(
-      ([, value]) => value === presetKey,
-    );
-    if (reference) {
-      showToast(window, `${presetKey} is used by ${reference[0]}`);
-      return false;
-    }
-    delete configs[presetKey];
-    return true;
-  }
-
-  const {
-    group: addGroup,
-    entry: addEntry,
-    button: addButton,
-  } = createQuickAddGroup({
-    description: "Add a preset now, then open it to set optional values.",
-    leading: new Gtk.Label({ label: "@" }),
-    placeholder: "myPreset",
-  });
-
-  const listGroup = new Adw.PreferencesGroup({
-    title: "Presets",
-    description: "Preset definitions can be referenced by app configs.",
-  });
-  const listRows = [];
-  const rowsByKey = new Map();
-  let lastPresets = serializePresets(configStore.configs);
-
-  function getDraftKey() {
-    const input = addEntry.text.trim();
-    if (!input) return "";
-    return input.startsWith("@") ? input : `@${input}`;
-  }
-
-  function updateAddButtonState() {
-    const key = getDraftKey();
-    const exists = Object.hasOwn(configStore.configs, key);
-    addButton.label = exists ? "Open" : "Add";
-    addButton.sensitive = isValidKey(key);
-  }
-
-  function refreshList() {
-    const expandedKeys = getExpandedKeys(rowsByKey);
-    clearGroupRows(listGroup, listRows);
-    rowsByKey.clear();
-
-    const rawConfigs = configStore.configs;
-    const presetKeys = getPresetKeys(rawConfigs);
-    lastPresets = serializePresets(rawConfigs);
-
-    if (presetKeys.length === 0) {
-      const row = new Adw.ActionRow({
-        title: "No presets yet",
-        subtitle: "Add one above to get started.",
-      });
-      listGroup.add(row);
-      listRows.push(row);
-      updateAddButtonState();
-      return;
-    }
-
-    for (const key of presetKeys) {
-      const row = buildConfigRow({
-        key,
-        getRawConfigs,
-        saveConfigs,
-        saveConfigsDebounced,
-        refreshList,
-        presets: [],
-        removeConfig: removePreset,
-        getOrigin: (presetKey) =>
-          getConfigOrigin(
-            configStore.rules,
-            presetKey,
-            configStore.baseConfigs,
-          ),
-        getResetValue: (presetKey) =>
-          getBaseConfig(presetKey, configStore.baseConfigs),
-        resetTitle: getResetTitle(
-          key,
-          "preset",
-          configStore.baseConfigs,
-        ),
-        validateKey: isValidKey,
-        updateReferences,
-      });
-      listGroup.add(row);
-      listRows.push(row);
-      rowsByKey.set(key, row);
-      row.expanded = expandedKeys.has(key);
-    }
-
-    updateAddButtonState();
-  }
-
-  addButton.connect("clicked", () => {
-    const key = getDraftKey();
-    if (!isValidKey(key)) {
-      showToast(window, "Enter a preset name");
-      return;
-    }
-    const rawConfigs = configStore.configs;
-    const exists = Object.hasOwn(rawConfigs, key);
-    if (!exists) {
-      rawConfigs[key] = getBaseConfig(key, configStore.baseConfigs);
-      saveConfigs();
-      refreshList();
-      showToast(window, `Added ${key}`);
-    }
-    rowsByKey.get(key).expanded = true;
-    addEntry.text = "";
-    addEntry.grab_focus();
-  });
-
-  addEntry.connect("changed", () => {
-    updateAddButtonState();
-  });
-  addEntry.connect("activate", () => addButton.emit("clicked"));
-
-  updateAddButtonState();
-
-  configStore.subscribe(({ configs, source }) => {
-    const nextPresets = serializePresets(configs);
-    if (source !== PRESET_SOURCE && nextPresets !== lastPresets) {
-      refreshList();
-    }
-  });
-
-  refreshList();
-
-  page.add(addGroup);
-  page.add(listGroup);
-  return page;
 }
 
 function buildRawConfigPage(window, configStore) {
@@ -1166,32 +1144,20 @@ function buildRawConfigPage(window, configStore) {
   let rulesEditor;
   let updatingRules = false;
   let rulesDirty = false;
-  const applyRules = () => {
-    let parsed;
-    try {
-      parsed = JSON.parse(rulesEditor.getText());
-    } catch (_error) {
-      showToast(window, "Invalid JSON");
-      return;
-    }
-    if (!isConfigObject(parsed)) {
-      showToast(window, "Rules must be a JSON object");
-      return;
-    }
-    const validationError = getRulesError(parsed, configStore.baseConfigs);
-    if (validationError) {
-      showToast(window, validationError);
-      return;
-    }
-    configStore.replaceRules(parsed, RAW_CONFIG_SOURCE);
-    setRulesBuffer(parsed);
-    showToast(window, "Rules applied");
-  };
+  const applyRules = () =>
+    tryAction(window, () => {
+      const parsed = parseConfigJson(rulesEditor.getText());
+      configStore.replaceRules(parsed, RAW_CONFIG_SOURCE);
+      setRulesBuffer(parsed);
+      showToast(window, "Rules applied");
+    });
   rulesEditor = createJsonEditor(window, {
     editable: true,
     apply: applyRules,
   });
   const effectiveEditor = createJsonEditor(window, { editable: false });
+  const fileCancellable = new Gio.Cancellable();
+  window.connect("destroy", () => fileCancellable.cancel());
 
   const stack = new Gtk.Stack({
     hexpand: true,
@@ -1229,93 +1195,93 @@ function buildRawConfigPage(window, configStore) {
     if (!updatingRules) rulesDirty = true;
   });
 
+  const exportConfig = (file) =>
+    tryFileAction(window, fileCancellable, "Export", async () => {
+      const contents = new TextEncoder().encode(
+        `${JSON.stringify(configStore.configs, null, 2)}\n`,
+      );
+      requireConfigFileSize(contents.length);
+      await file.replace_contents_async(
+        contents,
+        null,
+        false,
+        Gio.FileCreateFlags.REPLACE_DESTINATION,
+        fileCancellable,
+      );
+      showToast(window, "Full config exported");
+    });
+
   exportButton.connect("clicked", () => {
-    configStore.flush();
-    const chooser = createJsonFileChooser(
+    if (!tryAction(window, () => configStore.flush())) return;
+    chooseJsonFile(
       window,
       Gtk.FileChooserAction.SAVE,
       "Export Full Config",
+      (file) => void exportConfig(file),
+      "p7-borders-config.json",
     );
-    chooser.set_current_name("p7-borders-config.json");
-    chooser.connect("response", (_dialog, response) => {
-      if (response === Gtk.ResponseType.ACCEPT) {
-        try {
-          const contents = new TextEncoder().encode(
-            `${JSON.stringify(configStore.configs, null, 2)}\n`,
-          );
-          chooser
-            .get_file()
-            .replace_contents(
-              contents,
-              null,
-              false,
-              Gio.FileCreateFlags.REPLACE_DESTINATION,
-              null,
-            );
-          showToast(window, "Full config exported");
-        } catch (error) {
-          showToast(window, `Export failed: ${error.message}`);
-        }
-      }
-      chooser.destroy();
-    });
-    chooser.show();
   });
 
+  const importConfig = (file) =>
+    tryFileAction(window, fileCancellable, "Import", async () => {
+      const parsed = await readConfigFile(file, fileCancellable);
+      const validationError = getSettingsFullConfigError(
+        parsed,
+        configStore.baseConfigs,
+      );
+      if (validationError) throw new Error(validationError);
+
+      const rules = configStore.getRulesForConfigs(parsed);
+      const useShippedConfigs = configStore.useShippedConfigs;
+
+      let added = 0;
+      let modified = 0;
+      let suppressed = 0;
+      for (const [key, value] of Object.entries(rules)) {
+        if (value === null) suppressed++;
+        else if (Object.hasOwn(configStore.baseConfigs, key)) modified++;
+        else added++;
+      }
+
+      const confirmation = new Gtk.MessageDialog({
+        transient_for: window,
+        modal: true,
+        text: "Import this full config?",
+        secondary_text:
+          `${modified} built-in modified, ${added} custom added, ` +
+          `${suppressed} built-in suppressed.`,
+        buttons: Gtk.ButtonsType.NONE,
+      });
+      confirmation.add_button("Cancel", Gtk.ResponseType.CANCEL);
+      confirmation.add_button("Import", Gtk.ResponseType.ACCEPT);
+      confirmation.connect("response", (dialog, response) => {
+        if (response === Gtk.ResponseType.ACCEPT) {
+          tryAction(window, () => {
+            if (configStore.useShippedConfigs !== useShippedConfigs) {
+              throw new Error(
+                "Shipped config mode changed; review import again",
+              );
+            }
+            const acceptedRules = configStore.replaceConfigs(
+              parsed,
+              RAW_CONFIG_SOURCE,
+            );
+            setRulesBuffer(acceptedRules);
+            showToast(window, "Full config imported");
+          }, "Import");
+        }
+        dialog.destroy();
+      });
+      confirmation.present();
+    });
+
   importButton.connect("clicked", () => {
-    const chooser = createJsonFileChooser(
+    chooseJsonFile(
       window,
       Gtk.FileChooserAction.OPEN,
       "Import Full Config",
+      (file) => void importConfig(file),
     );
-    chooser.connect("response", (_dialog, response) => {
-      if (response !== Gtk.ResponseType.ACCEPT) {
-        chooser.destroy();
-        return;
-      }
-      try {
-        const [loaded, contents] = chooser.get_file().load_contents(null);
-        const parsed = JSON.parse(new TextDecoder().decode(contents));
-        if (!loaded || !isConfigObject(parsed)) {
-          throw new Error("Expected a JSON object");
-        }
-        const validationError = getConfigMapError(parsed);
-        if (validationError) throw new Error(validationError);
-        const rules = deriveAppConfigRules(parsed, configStore.baseConfigs);
-        let added = 0;
-        let modified = 0;
-        let suppressed = 0;
-        for (const [key, value] of Object.entries(rules)) {
-          if (value === null) suppressed++;
-          else if (Object.hasOwn(configStore.baseConfigs, key)) modified++;
-          else added++;
-        }
-        const confirmation = new Gtk.MessageDialog({
-          transient_for: window,
-          modal: true,
-          text: "Import this full config?",
-          secondary_text:
-            `${modified} built-in modified, ${added} custom added, ` +
-            `${suppressed} built-in suppressed.`,
-          buttons: Gtk.ButtonsType.NONE,
-        });
-        confirmation.add_button("Cancel", Gtk.ResponseType.CANCEL);
-        confirmation.add_button("Import", Gtk.ResponseType.ACCEPT);
-        confirmation.connect("response", (dialog, importResponse) => {
-          if (importResponse === Gtk.ResponseType.ACCEPT) {
-            configStore.replaceRules(rules, RAW_CONFIG_SOURCE);
-            setRulesBuffer(rules);
-            showToast(window, "Full config imported");
-          }
-          dialog.destroy();
-        });
-        confirmation.present();
-      } catch (error) {
-        showToast(window, `Import failed: ${error.message}`);
-      }
-      chooser.destroy();
-    });
-    chooser.show();
   });
 
   configStore.subscribe(({ configs, rules }) => {
@@ -1326,15 +1292,4 @@ function buildRawConfigPage(window, configStore) {
   page.add(fileGroup);
   page.add(jsonGroup);
   return page;
-}
-
-export function fillPreferencesWindow(window, settings) {
-  ensureSchemaVersion(settings);
-  const configStore = new PreferencesConfigStore(settings);
-  window.connect("destroy", () => configStore.destroy());
-  window.set_default_size(760, 640);
-  window.add(buildGlobalPage(settings, configStore));
-  window.add(buildPresetsPage(window, configStore));
-  window.add(buildConfigsPage(window, configStore));
-  window.add(buildRawConfigPage(window, configStore));
 }

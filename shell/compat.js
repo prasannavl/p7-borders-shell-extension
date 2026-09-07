@@ -4,32 +4,24 @@
 // GNOME constantly has breaking changes and it's not fun to keep up with these
 // changes. This file abstracts away some of these differences.
 
+import { BORDER_CORNERS, BORDER_SIDES } from "../common/border.js";
+
 export function getMaximizeState(metaWindow) {
   const flags = metaWindow.get_maximize_flags?.() ?? 0;
   // Meta.MaximizeFlags values are stable across the supported Shell versions.
   const hFlag = 1;
   const vFlag = 2;
-  const bothFlag = hFlag | vFlag;
 
-  let horizontal = (flags & hFlag) !== 0;
-  let vertical = (flags & vFlag) !== 0;
+  let horizontal = !!metaWindow.maximized_horizontally;
+  let vertical = !!metaWindow.maximized_vertically;
 
-  if (!flags) {
-    horizontal = !!metaWindow.maximized_horizontally;
-    vertical = !!metaWindow.maximized_vertically;
+  if (flags) {
+    horizontal = (flags & hFlag) !== 0;
+    vertical = (flags & vFlag) !== 0;
   }
 
   const any = horizontal || vertical;
-  const full = flags ? (flags & bothFlag) === bothFlag : horizontal && vertical;
-
-  return { any, full, horizontal, vertical };
-}
-
-function getWorkarea(metaWindow) {
-  const monitor = metaWindow.get_monitor();
-  if (monitor < 0 || monitor >= global.display.get_n_monitors()) return null;
-
-  return metaWindow.get_work_area_current_monitor();
+  return { any, full: horizontal && vertical, horizontal, vertical };
 }
 
 export function getWindowState(metaWindow, actor) {
@@ -54,27 +46,25 @@ export function getWindowState(metaWindow, actor) {
   };
 }
 
-export function applyBorderState(border, state, cache) {
+export function applyBorderState(border, state, cachedStyle) {
   if (!state.visible) {
     border.visible = false;
-    if (cache) cache.borderStyleCache = null;
-    return;
+    return null;
   }
 
   border.set_position(state.pos.x, state.pos.y);
   border.set_size(state.size.width, state.size.height);
 
   const { borderWidths, radius, borderColor } = state;
-  const styleKey =
-    `${borderWidths.top},${borderWidths.right},${borderWidths.bottom},${borderWidths.left}|` +
-    `${radius.tl},${radius.tr},${radius.br},${radius.bl}|${borderColor}`;
+  const widths = BORDER_SIDES.map((side) => borderWidths[side]);
+  const radii = BORDER_CORNERS.map((corner) => radius[corner]);
+  const styleKey = `${widths}|${radii}|${borderColor}`;
 
-  if (cache?.borderStyleCache !== styleKey) {
-    const styleString = `border-top-width: ${borderWidths.top}px;` +
-      `border-right-width: ${borderWidths.right}px;` +
-      `border-bottom-width: ${borderWidths.bottom}px;` +
-      `border-left-width: ${borderWidths.left}px;` +
-      `border-radius: ${radius.tl}px ${radius.tr}px ${radius.br}px ${radius.bl}px;` +
+  if (cachedStyle !== styleKey) {
+    const styleString = BORDER_SIDES.map(
+      (side, index) => `border-${side}-width: ${widths[index]}px;`,
+    ).join("") +
+      `border-radius: ${radii.map((value) => `${value}px`).join(" ")};` +
       "border-style: solid;" +
       `border-color: ${borderColor};` +
       "background: transparent;";
@@ -82,5 +72,12 @@ export function applyBorderState(border, state, cache) {
   }
 
   border.visible = true;
-  if (cache) cache.borderStyleCache = styleKey;
+  return styleKey;
+}
+
+function getWorkarea(metaWindow) {
+  const monitor = metaWindow.get_monitor();
+  if (monitor < 0 || monitor >= global.display.get_n_monitors()) return null;
+
+  return metaWindow.get_work_area_current_monitor();
 }

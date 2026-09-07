@@ -1,13 +1,26 @@
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
+
+import {
+  BASE_APP_CONFIGS,
+  buildEffectiveAppConfigs,
+  deriveAppConfigRules,
+  MAX_CONFIG_ENTRIES,
+  MAX_MATCH_VALUE_LENGTH,
+} from "../common/appconfig.js";
 
 import {
   ConfigManager,
   ensureSchemaVersion,
+  getSettingsConfigMapError,
+  getSettingsFullConfigError,
   getSettingsRules,
+  getSettingsRulesError,
   readSettingsAppConfigs,
   SCHEMA_VERSION,
   setSettingsRules,
 } from "../common/config.js";
+import { assertEquals } from "./assert.js";
 
 // GNOME Shell adds connectObject()/disconnectObject() to GObject signals.
 // Standalone GJS does not load that Shell helper, so mirror its ownership
@@ -36,14 +49,6 @@ const settings = new Gio.Settings({
 });
 const logger = { log() {}, warn() {} };
 let passed = 0;
-
-function assertEquals(actual, expected) {
-  const actualJson = JSON.stringify(actual);
-  const expectedJson = JSON.stringify(expected);
-  if (actualJson !== expectedJson) {
-    throw new Error(`Expected ${expectedJson}, got ${actualJson}`);
-  }
-}
 
 function resetSettings() {
   for (const key of settings.settings_schema.list_keys()) settings.reset(key);
@@ -84,6 +89,19 @@ test("empty rules reset their user value", () => {
   assertEquals(settings.get_user_value("rules"), null);
 });
 
+test("invalid rules documents recover with one diagnostic", () => {
+  const warnings = [];
+  settings.set_string("rules", "not json");
+
+  assertEquals(
+    readSettingsAppConfigs(settings, {
+      warn: (message) => warnings.push(message),
+    }).rules,
+    {},
+  );
+  assertEquals(warnings, ["Ignoring invalid rules document: Invalid JSON"]);
+});
+
 test("shipped configs can be excluded without changing user rules", () => {
   const rules = {
     "@mine": { width: 8 },
@@ -106,6 +124,16 @@ test("shipped configs can be excluded without changing user rules", () => {
   assertEquals(layered.configs["class:mine"], "@mine");
   assertEquals(layered.configs["class:firefox"], undefined);
   assertEquals(layered.configs["class:thunderbird"], "@gtk");
+});
+
+test("case-variant shipped overrides remain accepted runtime rules", () => {
+  const rules = { "class:Firefox": "@zero" };
+  setSettingsRules(settings, rules);
+
+  const state = readSettingsAppConfigs(settings);
+  assertEquals(state.rules, rules);
+  assertEquals(state.configs["class:firefox"], "@zero");
+  assertEquals(state.configs["class:Firefox"], undefined);
 });
 
 test("ConfigManager uses only standalone rules when shipped configs are off", () => {
@@ -131,8 +159,8 @@ test("invalid standalone rules fall back to an empty config", () => {
   assertEquals(readSettingsAppConfigs(settings).configs, {});
 });
 
-function withManager(callback, managerLogger = logger) {
-  const manager = new ConfigManager(settings, managerLogger);
+function withManager(callback, managerLogger = logger, onChange = null) {
+  const manager = new ConfigManager(settings, managerLogger, onChange);
   try {
     callback(manager);
   } finally {
@@ -258,6 +286,156 @@ test("invalid regexes are ignored and unmatched windows use defaults", () => {
   });
 });
 
+test("runtime regex validation preserves the safe shared syntax", () => {
+  assertEquals(
+    getSettingsConfigMapError({ "regex.class:[^]": {} }),
+    "Invalid regular expression: regex.class:[^]",
+  );
+  assertEquals(
+    getSettingsConfigMapError({ "regex.class:(?i)name": {} }),
+    "Invalid regular expression: regex.class:(?i)name",
+  );
+});
+
+test("regex matching is bounded and skips oversized window identities", () => {
+  settings.set_int("default-width", 4);
+  setSettingsRules(settings, {
+    "regex.class:^(a+)+$": { width: 12 },
+    "regex.app:^a+$": { width: 9 },
+  });
+
+  withManager((manager) => {
+    assertEquals(manager._regexConfigs[0].matcher instanceof GLib.Regex, true);
+    assertEquals(
+      manager.getConfigForWindow(
+        metaWindow({ wmClass: `${"a".repeat(MAX_MATCH_VALUE_LENGTH - 1)}!` }),
+      ),
+      manager.defaults,
+    );
+    assertEquals(
+      manager.getConfigForWindow(
+        metaWindow({ appId: "a".repeat(MAX_MATCH_VALUE_LENGTH) }),
+      ).width,
+      9,
+    );
+    assertEquals(
+      manager.getConfigForWindow(
+        metaWindow({ appId: "a".repeat(MAX_MATCH_VALUE_LENGTH + 1) }),
+      ),
+      manager.defaults,
+    );
+  });
+});
+
+test("shipped regexes retain their existing matching behavior", () => {
+  withManager((manager) => {
+    for (
+      const [wmClass, configKey] of [
+        ["ORG.GNOME.Console", "regex.class:^org.gnome.*"],
+        ["orgXgnome.Console", "regex.class:^org.gnome.*"],
+        ["GOOGLE-CHROME-stable", "regex.class:^google-chrome"],
+        ["CHROME-app", "regex.class:^chrome-"],
+        ["CHROMIUM-browser", "regex.class:^chromium"],
+        ["VIVALDI-stable", "regex.class:^vivaldi"],
+      ]
+    ) {
+      assertEquals(
+        manager.getConfigForWindow(metaWindow({ wmClass })) ===
+          manager.appConfigs[configKey],
+        true,
+      );
+    }
+    assertEquals(
+      manager.getConfigForWindow(metaWindow({ wmClass: "xorg.gnome.App" })),
+      manager.defaults,
+    );
+  });
+});
+
+test("invalid rules do not consume the valid entry budget", () => {
+  const rules = Object.fromEntries(
+    Array.from({ length: MAX_CONFIG_ENTRIES }, (_, index) => [
+      `class:broken-${index}`,
+      { width: "wide" },
+    ]),
+  );
+  rules["class:valid"] = { width: 8 };
+  setSettingsRules(settings, rules);
+
+  const loaded = readSettingsAppConfigs(settings);
+  assertEquals(Object.keys(loaded.rules), ["class:valid"]);
+  assertEquals(loaded.configs["class:valid"], { width: 8 });
+});
+
+test("unknown references do not consume the valid entry budget", () => {
+  const rules = Object.fromEntries(
+    Array.from({ length: MAX_CONFIG_ENTRIES }, (_, index) => [
+      `class:broken-${index}`,
+      "@missing",
+    ]),
+  );
+  rules["class:valid"] = { width: 8 };
+  setSettingsRules(settings, rules);
+
+  const loaded = readSettingsAppConfigs(settings);
+  assertEquals(Object.keys(loaded.rules), ["class:valid"]);
+  assertEquals(loaded.configs["class:valid"], { width: 8 });
+});
+
+test("invalid regex candidates cannot displace later non-regex rules", () => {
+  const rules = Object.fromEntries(
+    Array.from({ length: 128 }, (_, index) => [
+      `regex.class:[^]${index}`,
+      {},
+    ]),
+  );
+  rules["class:valid"] = { width: 8 };
+  setSettingsRules(settings, rules);
+
+  const loaded = readSettingsAppConfigs(settings);
+  assertEquals(Object.keys(loaded.rules), ["class:valid"]);
+});
+
+test("full effective configs use a separate import budget", () => {
+  const rules = Object.fromEntries(
+    Array.from({ length: MAX_CONFIG_ENTRIES }, (_, index) => [
+      `class:custom-${index}`,
+      { width: 8 },
+    ]),
+  );
+  const effective = buildEffectiveAppConfigs(rules, BASE_APP_CONFIGS);
+  const derived = deriveAppConfigRules(effective, BASE_APP_CONFIGS);
+
+  assertEquals(Object.keys(effective).length > MAX_CONFIG_ENTRIES, true);
+  assertEquals(
+    getSettingsFullConfigError(effective, BASE_APP_CONFIGS),
+    null,
+  );
+  assertEquals(getSettingsRulesError(derived, BASE_APP_CONFIGS), null);
+});
+
+test("rule loading stops after the valid entry budget", () => {
+  const rules = Object.fromEntries(
+    Array.from({ length: MAX_CONFIG_ENTRIES + 1 }, (_, index) => [
+      `class:valid-${index}`,
+      { width: 8 },
+    ]),
+  );
+  setSettingsRules(settings, rules);
+
+  const warnings = [];
+  const loaded = readSettingsAppConfigs(settings, {
+    warn(message) {
+      warnings.push(message);
+    },
+  });
+  assertEquals(Object.keys(loaded.rules).length, MAX_CONFIG_ENTRIES);
+  assertEquals(loaded.rules[`class:valid-${MAX_CONFIG_ENTRIES}`], undefined);
+  assertEquals(warnings, [
+    `Ignoring rules after ${MAX_CONFIG_ENTRIES} valid entries`,
+  ]);
+});
+
 test("invalid field types are ignored before geometry is computed", () => {
   const warnings = [];
   setSettingsRules(settings, {
@@ -364,11 +542,15 @@ test("preset rules reach every app that references the preset", () => {
 test("window methods are optional and fall back to global defaults", () => {
   withManager((manager) => {
     assertEquals(manager.getConfigForWindow({}), manager.defaults);
+    assertEquals(
+      manager.getConfigForWindow(metaWindow({ wmClass: {} })),
+      manager.defaults,
+    );
   });
 });
 
 test("active color supports translucent, solid, and manual modes", () => {
-  const getColor = ConfigManager.prototype._getDefaultActiveOrAccentColor;
+  const getColor = ConfigManager.prototype._getDefaultActiveColor;
   const receiver = (activeColor, hasAccent) => ({
     _settings: { get_string: () => activeColor },
     _interfaceSettings: {
@@ -399,13 +581,36 @@ test("active color supports translucent, solid, and manual modes", () => {
 });
 
 test("settings changes reload config and notify listeners", () => {
-  withManager((manager) => {
-    const changes = [];
-    manager.addConfigChangeListener((change) => changes.push(change));
-    settings.set_int("default-width", 10);
-    assertEquals(manager.defaults.width, 10);
-    assertEquals(changes, ["default-width"]);
-  });
+  const changes = [];
+  withManager(
+    (manager) => {
+      settings.set_int("default-width", 10);
+      assertEquals(manager.defaults.width, 10);
+      assertEquals(changes, ["default-width"]);
+    },
+    logger,
+    (change) => changes.push(change),
+  );
+});
+
+test("logging and modal changes retain compiled application configs", () => {
+  const changes = [];
+  withManager(
+    (manager) => {
+      const defaults = manager.defaults;
+      const appConfigs = manager.appConfigs;
+      settings.set_boolean("verbose-logging", true);
+      settings.set_boolean("modal-enabled", false);
+
+      assertEquals(manager.defaults === defaults, true);
+      assertEquals(manager.appConfigs === appConfigs, true);
+      assertEquals(manager.globalConfig.verboseLogging, true);
+      assertEquals(manager.globalConfig.modalEnabled, false);
+      assertEquals(changes, ["verbose-logging", "modal-enabled"]);
+    },
+    logger,
+    (change) => changes.push(change),
+  );
 });
 
 test("unknown preset references do not discard valid rules", () => {

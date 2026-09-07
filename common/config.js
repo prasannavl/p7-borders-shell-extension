@@ -1,14 +1,20 @@
 // config.js
 
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 import {
   BASE_APP_CONFIGS,
   buildEffectiveAppConfigs,
   canonicalizeConfigKey,
-  findEquivalentConfigKey,
   getConfigMapError,
   getOrderedRegexConfigs,
+  getRulesError,
   isSafeCssColor,
+  MAX_CONFIG_ENTRIES,
+  MAX_CONFIG_FILE_SIZE,
+  MAX_MATCH_VALUE_LENGTH,
+  MAX_REGEX_CONFIGS,
+  MAX_REGEX_RULES,
   normalizeMargins,
   normalizeRadius,
   normalizeWidth,
@@ -22,13 +28,22 @@ export const USE_SHIPPED_CONFIGS_KEY = "use-shipped-configs";
 const DEFAULT_ACTIVE_COLOR = "rgba(51, 153, 230, 0.4)";
 const DEFAULT_SOLID_ACTIVE_COLOR = "rgb(51, 153, 230)";
 const DEFAULT_INACTIVE_COLOR = "rgba(102, 102, 102, 0.2)";
+const MAX_CONFIG_WARNINGS = 20;
+const MAX_RULE_CANDIDATES = 2 * MAX_CONFIG_ENTRIES;
 
-function safeColor(value, fallback) {
-  return isSafeCssColor(value) ? value.trim() : fallback;
+export function getSettingsConfigMapError(configs, options = {}) {
+  return getConfigMapError(configs, { ...options, ...REGEX_VALIDATION });
 }
 
-export function getSettingsBaseConfigs(settings) {
-  return settings.get_boolean(USE_SHIPPED_CONFIGS_KEY) ? BASE_APP_CONFIGS : {};
+export function getSettingsRulesError(rules, baseConfigs) {
+  return getRulesError(rules, baseConfigs, REGEX_VALIDATION);
+}
+
+export function getSettingsFullConfigError(configs, baseConfigs) {
+  return getSettingsConfigMapError(configs, {
+    maxEntries: MAX_CONFIG_ENTRIES + Object.keys(baseConfigs).length,
+    maxJsonLength: MAX_CONFIG_FILE_SIZE,
+  });
 }
 
 export function ensureSchemaVersion(settings) {
@@ -43,96 +58,188 @@ export function ensureSchemaVersion(settings) {
   }
 }
 
-export function getSettingsRules(settings) {
-  return parseConfigJson(settings.get_string(RULES_KEY));
+export function getSettingsRules(settings, logger = null) {
+  try {
+    return parseConfigJson(settings.get_string(RULES_KEY));
+  } catch (error) {
+    // Persisted invalid input must not prevent the extension from starting.
+    logger?.warn(`Ignoring invalid rules document: ${error.message}`);
+    return {};
+  }
 }
 
 export function setSettingsRules(settings, rules) {
+  if (!settings.is_writable(RULES_KEY)) return false;
   if (Object.keys(rules).length > 0) {
-    settings.set_string(RULES_KEY, JSON.stringify(rules));
-  } else {
-    settings.reset(RULES_KEY);
+    return settings.set_string(RULES_KEY, JSON.stringify(rules));
   }
+  settings.reset(RULES_KEY);
+  return true;
 }
 
 export function readSettingsAppConfigs(settings, logger = null) {
-  const baseConfigs = getSettingsBaseConfigs(settings);
-  const rules = {};
-  for (const [key, value] of Object.entries(getSettingsRules(settings))) {
-    const equivalentKey = findEquivalentConfigKey(rules, key);
-    const error = equivalentKey
-      ? `Duplicate exact-match config keys: ${equivalentKey} and ${key}`
-      : getConfigMapError({ [key]: value }, {
-        allowTombstones: true,
-        validateReferences: false,
-      });
-    if (error) {
-      logger?.warn(`Ignoring invalid rule: ${error}`);
-    } else {
-      rules[key] = value;
+  const useShippedConfigs = settings.get_boolean(USE_SHIPPED_CONFIGS_KEY);
+  const baseConfigs = useShippedConfigs ? BASE_APP_CONFIGS : {};
+  const rawRules = getSettingsRules(settings, logger);
+  const entries = Object.entries(rawRules);
+  const candidates = [];
+  let warningCount = 0;
+  const warn = (message) => {
+    if (warningCount < MAX_CONFIG_WARNINGS) logger?.warn(message);
+    else if (warningCount === MAX_CONFIG_WARNINGS) {
+      logger?.warn("Ignoring additional invalid rules");
     }
+    warningCount++;
+  };
+
+  let regexCandidates = 0;
+  for (let index = 0; index < entries.length; index++) {
+    if (index >= MAX_RULE_CANDIDATES) {
+      warn(`Ignoring rules after ${MAX_RULE_CANDIDATES} candidates`);
+      break;
+    }
+    const [key, value] = entries[index];
+    if (
+      key.startsWith("regex.") &&
+      ++regexCandidates > MAX_REGEX_RULES
+    ) {
+      warn(`Ignoring regexes after ${MAX_REGEX_RULES} candidates`);
+      continue;
+    }
+    const error = getSettingsConfigMapError({ [key]: value }, {
+      allowTombstones: true,
+      validateReferences: false,
+    });
+    if (error) {
+      warn(`Ignoring invalid rule: ${error}`);
+    } else candidates.push([key, value]);
+  }
+
+  // Resolve references before applying the accepted-rule quota, so broken
+  // references cannot displace valid rules. Presets are admitted first because
+  // application references depend on them, while regex order remains intact.
+  const presets = new Set(
+    Object.keys(baseConfigs).filter((key) => key.startsWith("@")),
+  );
+  for (const [key, value] of candidates) {
+    if (!key.startsWith("@")) continue;
+    if (value === null) presets.delete(key);
+    else presets.add(key);
+  }
+
+  const validEntries = candidates.filter(([key, value]) => {
+    if (typeof value !== "string" || presets.has(value)) return true;
+    warn(`Ignoring invalid rule: Unknown preset reference ${value} in ${key}`);
+    return false;
+  });
+  validEntries.sort(([left], [right]) =>
+    Number(right.startsWith("@")) - Number(left.startsWith("@"))
+  );
+
+  const rules = {};
+  const exactKeys = new Map();
+  for (const [key, value] of validEntries) {
+    const canonicalKey = canonicalizeConfigKey(key);
+    const equivalentKey = exactKeys.get(canonicalKey);
+    if (equivalentKey) {
+      warn(
+        `Ignoring invalid rule: Duplicate exact-match config keys: ` +
+          `${equivalentKey} and ${key}`,
+      );
+      continue;
+    }
+    if (exactKeys.size >= MAX_CONFIG_ENTRIES) {
+      warn(`Ignoring rules after ${MAX_CONFIG_ENTRIES} valid entries`);
+      break;
+    }
+    rules[key] = value;
+    exactKeys.set(canonicalKey, key);
   }
 
   const configs = buildEffectiveAppConfigs(rules, baseConfigs);
+  const configKeys = new Set(Object.keys(configs).map(canonicalizeConfigKey));
+  // Overflow can exclude a custom preset that an earlier accepted app uses.
   for (const [key, value] of Object.entries(rules)) {
-    if (typeof value === "string" && !Object.hasOwn(configs, key)) {
-      logger?.warn(
+    if (
+      typeof value === "string" && !configKeys.has(canonicalizeConfigKey(key))
+    ) {
+      warn(
         `Ignoring invalid rule: Unknown preset reference ${value} in ${key}`,
       );
       delete rules[key];
     }
   }
-  return { configs, rules, baseConfigs };
+
+  return { configs, rules, rawRules, baseConfigs, useShippedConfigs };
 }
 
 export class ConfigManager {
-  constructor(settings, logger) {
-    // Use the settings object provided by Extension.getSettings()
+  constructor(settings, logger, onChange = null) {
     this._settings = settings;
     this._logger = logger;
-
-    // Interface settings for accent color detection
     this._interfaceSettings = new Gio.Settings({
       schema_id: "org.gnome.desktop.interface",
     });
-
-    // Callbacks for config changes
-    this._configChangeCallbacks = new Set();
+    this._onChange = onChange;
 
     ensureSchemaVersion(this._settings);
-
-    // Connect to settings changes
     this._settings.connectObject(
       "changed",
-      (_settings, key) => this._reloadConfig(key),
+      (_settings, key) => this._onSettingsChanged(key),
       this,
     );
-
-    // Connect to accent color changes
     this._interfaceSettings.connectObject(
       "changed::accent-color",
-      () => this._reloadConfig("accent-color"),
+      () => this._onSettingsChanged("accent-color"),
       this,
     );
 
-    this._init();
+    this._loadConfig();
   }
 
-  _init() {
-    // Get the pure global configs into globalConfig. The rest that
-    // go into each app config is pulled directly by defauls below.
-    const radiusEnabled = this._settings.get_boolean("radius-enabled");
-    const modalEnabled = this._settings.get_boolean("modal-enabled");
-    const verboseLogging = this._settings.get_boolean("verbose-logging");
+  getConfigForWindow(metaWindow) {
+    const appId = boundedIdentity(metaWindow.get_gtk_application_id?.());
+    const wmClass = boundedIdentity(metaWindow.get_wm_class?.());
+    const exactMatch = this.appConfigs[`app:${appId.toLowerCase()}`] ||
+      this.appConfigs[`class:${wmClass.toLowerCase()}`];
+    if (exactMatch) return exactMatch;
+
+    for (const { target, matcher, config } of this._regexConfigs) {
+      const value = target === "app" ? appId : wmClass;
+      if (value && matcher.match(value, GLib.RegexMatchFlags.DEFAULT)[0]) {
+        return config;
+      }
+    }
+    return this.defaults;
+  }
+
+  destroy() {
+    this._settings.disconnectObject(this);
+    this._interfaceSettings.disconnectObject(this);
+    this._onChange = null;
+  }
+
+  _onSettingsChanged(changeType) {
+    if (changeType === "schema-version") return;
+    const property = {
+      "modal-enabled": "modalEnabled",
+      "verbose-logging": "verboseLogging",
+    }[changeType];
+    if (property) {
+      this.globalConfig[property] = this._settings.get_boolean(changeType);
+    } else this._loadConfig();
+    this._onChange?.(changeType);
+  }
+
+  _loadConfig() {
     this.globalConfig = {
-      radiusEnabled,
-      modalEnabled,
-      verboseLogging,
+      radiusEnabled: this._settings.get_boolean("radius-enabled"),
+      modalEnabled: this._settings.get_boolean("modal-enabled"),
+      verboseLogging: this._settings.get_boolean("verbose-logging"),
     };
 
-    // Update default config from the current settings
     const defaults = {
-      activeColor: this._getDefaultActiveOrAccentColor(),
+      activeColor: this._getDefaultActiveColor(),
       inactiveColor: safeColor(
         this._settings.get_string("default-inactive-color"),
         DEFAULT_INACTIVE_COLOR,
@@ -144,47 +251,44 @@ export class ConfigManager {
       maximizedBorder: this._settings.get_boolean("default-maximized-borders"),
     };
 
-    const { configs: rawConfigs, rules, baseConfigs } = readSettingsAppConfigs(
-      this._settings,
-      this._logger,
-    );
+    const { configs: effectiveConfigs, rules, baseConfigs } =
+      readSettingsAppConfigs(this._settings, this._logger);
 
-    // Build normalized app configs
-    const resolvedConfigs = this._resolvePresets(rawConfigs);
     this.appConfigs = {};
-
-    // Create default config
     this.defaults = this._normalizeConfig(defaults);
-    const defaultConfig = this.defaults;
 
-    // Normalize all other configs using default as base
-    for (const [key, rawConfig] of Object.entries(resolvedConfigs)) {
-      if (!key.startsWith("@")) {
-        const normalized = this._normalizeConfig(
-          {
-            ...defaultConfig,
-            // If an app config is specified, it's now whitelisted
-            enabled: true,
-            ...rawConfig,
-          },
-        );
-        const configKey = canonicalizeConfigKey(key);
-        this.appConfigs[configKey] = normalized;
-      }
+    // Resolve presets before normalizing each application config over defaults.
+    for (const [key, value] of Object.entries(effectiveConfigs)) {
+      if (key.startsWith("@")) continue;
+      const resolvedConfig = resolveConfigValue(value, effectiveConfigs);
+      this.appConfigs[canonicalizeConfigKey(key)] = this._normalizeConfig({
+        ...this.defaults,
+        // If an app config is specified, it's now whitelisted.
+        enabled: true,
+        ...resolvedConfig,
+      });
     }
 
-    this._regexConfigs = getOrderedRegexConfigs(
+    const regexConfigs = getOrderedRegexConfigs(
       this.appConfigs,
       rules,
       baseConfigs,
-    ).map(([key, config]) => ({
+    );
+    if (regexConfigs.length > MAX_REGEX_CONFIGS) {
+      this._logger.warn(
+        `Ignoring regexes after the first ${MAX_REGEX_CONFIGS} entries`,
+      );
+    }
+    this._regexConfigs = regexConfigs.slice(0, MAX_REGEX_CONFIGS).map((
+      [key, config],
+    ) => ({
       target: key.startsWith("regex.app:") ? "app" : "class",
-      matcher: new RegExp(key.slice(key.indexOf(":") + 1), "i"),
+      matcher: compileAppRegex(key.slice(key.indexOf(":") + 1)),
       config,
     }));
   }
 
-  _getDefaultActiveOrAccentColor() {
+  _getDefaultActiveColor() {
     const activeColor = this._settings.get_string("default-active-color");
     const solidAccent = activeColor === "auto-solid";
     if (activeColor !== "auto" && !solidAccent) {
@@ -202,75 +306,6 @@ export class ConfigManager {
     return solidAccent ? DEFAULT_SOLID_ACTIVE_COLOR : DEFAULT_ACTIVE_COLOR;
   }
 
-  // --- GSettings change handling -----------------------------------------
-
-  _reloadConfig(changeType) {
-    this._init();
-    this._notifyConfigChange(changeType);
-  }
-
-  _notifyConfigChange(changeType) {
-    for (const callback of this._configChangeCallbacks) {
-      callback(changeType);
-    }
-  }
-
-  // --- Public API for dynamic updates ------------------------------------
-
-  /**
-   * Add a callback to be called when configuration changes
-   * @param {Function} callback - Function to call on config changes
-   */
-  addConfigChangeListener(callback) {
-    this._configChangeCallbacks.add(callback);
-  }
-
-  /**
-   * Remove a config change callback
-   * @param {Function} callback - The callback to remove
-   */
-  removeConfigChangeListener(callback) {
-    this._configChangeCallbacks.delete(callback);
-  }
-
-  /**
-   * Clean up resources
-   */
-  destroy() {
-    // Disconnect settings signals
-    this._settings.disconnectObject(this);
-    this._interfaceSettings.disconnectObject(this);
-    this._configChangeCallbacks.clear();
-  }
-
-  _resolvePresets(rawConfigs = {}) {
-    const resolvedConfigs = {};
-    for (const [key, value] of Object.entries(rawConfigs)) {
-      if (key.startsWith("@")) continue;
-      resolvedConfigs[key] = resolveConfigValue(value, rawConfigs);
-    }
-
-    return resolvedConfigs;
-  }
-
-  getConfigForWindow(metaWindow) {
-    const appId = metaWindow.get_gtk_application_id?.() || "";
-    const wmClass = metaWindow.get_wm_class?.() || "";
-
-    // Try exact matches first
-    const exactMatch = this.appConfigs[`app:${appId.toLowerCase()}`] ||
-      this.appConfigs[`class:${wmClass.toLowerCase()}`];
-
-    if (exactMatch) return exactMatch;
-
-    // Try pattern matches
-    for (const { target, matcher, config } of this._regexConfigs) {
-      const value = target === "app" ? appId : wmClass;
-      if (value && matcher.test(value)) return config;
-    }
-    return this.defaults;
-  }
-
   _normalizeConfig(config = {}) {
     return {
       ...config,
@@ -280,7 +315,35 @@ export class ConfigManager {
       margins: normalizeMargins(config.margins),
       radius: this.globalConfig.radiusEnabled
         ? normalizeRadius(config.radius)
-        : { tl: 0, tr: 0, br: 0, bl: 0 },
+        : normalizeRadius(0),
     };
   }
+}
+
+const REGEX_MATCH_LIMIT = 10000;
+const REGEX_DEPTH_LIMIT = 1000;
+const REGEX_FLAGS = GLib.RegexCompileFlags.CASELESS |
+  GLib.RegexCompileFlags.OPTIMIZE;
+const REGEX_VALIDATION = { validateRegex: compileAppRegex };
+
+function compileAppRegex(pattern) {
+  // Preserve the existing JavaScript syntax contract, then use PCRE's match
+  // budget so a pathological rule cannot hold the Shell thread indefinitely.
+  new RegExp(pattern);
+  return GLib.Regex.new(
+    `(*LIMIT_MATCH=${REGEX_MATCH_LIMIT})` +
+      `(*LIMIT_DEPTH=${REGEX_DEPTH_LIMIT})(?:${pattern})`,
+    REGEX_FLAGS,
+    GLib.RegexMatchFlags.DEFAULT,
+  );
+}
+
+function safeColor(value, fallback) {
+  return isSafeCssColor(value) ? value.trim() : fallback;
+}
+
+function boundedIdentity(value) {
+  return typeof value === "string" && value.length <= MAX_MATCH_VALUE_LENGTH
+    ? value
+    : "";
 }

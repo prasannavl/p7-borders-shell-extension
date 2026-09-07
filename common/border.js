@@ -1,5 +1,9 @@
 const EDGE_EPS = 2;
-const ZERO_RADIUS = { tl: 0, tr: 0, br: 0, bl: 0 };
+export const BORDER_SIDES = ["top", "right", "bottom", "left"];
+export const BORDER_CORNERS = ["tl", "tr", "br", "bl"];
+const ZERO_RADIUS = Object.fromEntries(
+  BORDER_CORNERS.map((corner) => [corner, 0]),
+);
 
 export function computeBorderState(windowState, config) {
   const {
@@ -12,7 +16,7 @@ export function computeBorderState(windowState, config) {
     isFocused,
   } = windowState;
   const { margins, radius, width: borderWidth } = config;
-  const radiusEnabled = !!(radius.tl || radius.tr || radius.br || radius.bl);
+  const radiusEnabled = BORDER_CORNERS.some((corner) => radius[corner]);
 
   if (
     !workarea ||
@@ -53,27 +57,12 @@ export function computeBorderState(windowState, config) {
       edgeThreshold,
   };
 
-  const borderWidths = {
-    top: edges.top ? 0 : borderWidth,
-    right: edges.right ? 0 : borderWidth,
-    bottom: edges.bottom ? 0 : borderWidth,
-    left: edges.left ? 0 : borderWidth,
-  };
-  if (
-    !borderWidths.top &&
-    !borderWidths.right &&
-    !borderWidths.bottom &&
-    !borderWidths.left
-  ) {
+  const borderWidths = hideTouchedEdges(edges, () => borderWidth);
+  if (BORDER_SIDES.every((side) => !borderWidths[side])) {
     return { visible: false };
   }
 
-  const effectiveMargins = {
-    top: edges.top ? 0 : margins.top,
-    right: edges.right ? 0 : margins.right,
-    bottom: edges.bottom ? 0 : margins.bottom,
-    left: edges.left ? 0 : margins.left,
-  };
+  const effectiveMargins = hideTouchedEdges(edges, (side) => margins[side]);
 
   const effectiveRadius = !radiusEnabled || maximize.any ? ZERO_RADIUS : {
     tl: edges.top || edges.left ? 0 : radius.tl,
@@ -110,4 +99,10 @@ export function computeBorderState(windowState, config) {
       ),
     },
   };
+}
+
+function hideTouchedEdges(edges, getValue) {
+  return Object.fromEntries(
+    BORDER_SIDES.map((side) => [side, edges[side] ? 0 : getValue(side)]),
+  );
 }

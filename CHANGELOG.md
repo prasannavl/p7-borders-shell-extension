@@ -2,6 +2,24 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [51] - 2026-09-07
+
+- Time-slice border attachment and updates through one idle queue, coalesce
+  repeated geometry signals, and prevent requeued windows from starving later
+  work so large window batches do not block the Shell main thread.
+- Give one window tracker ownership of pending and active records, stale
+  callbacks, signals, border leases, and retryable cleanup, with transactional
+  actor attachment and clipping restoration across failures and disposal.
+- Bound configuration and regex work by document, entry, candidate, pattern,
+  identity, match, and recursion limits; isolate malformed rules and unsafe CSS
+  while preserving valid application configuration.
+- Make preferences edits immutable and transactional, with canonical
+  case-insensitive app keys, debounced saves, external-update handling,
+  failed-write rollback, and validated full-config import and export.
+- Consolidate configuration, geometry, compatibility, UI, lifecycle, and test
+  helpers behind clear ownership while preserving GNOME Shell 45 through 50
+  behavior.
+
 ## [50] - 2026-09-04
 
 - Follow the Shell accent color on GNOME 47 and newer with translucent and solid
