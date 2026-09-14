@@ -2,6 +2,13 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [52] - 2026-09-14
+
+- Add the `md.obsidian.Obsidian` class to the shared application config so that
+  class-based matching covers both installed Obsidian variants.
+- Clarify that the plain `obsidian` entry maps to the older class name without a
+  corner radius, while the newer one uses rounded borders.
+
 ## [51] - 2026-09-07
 
 - Time-slice border attachment and updates through one idle queue, coalesce

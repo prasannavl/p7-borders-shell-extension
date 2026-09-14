@@ -82,10 +82,12 @@ export const BASE_APP_CONFIGS = {
     "geary",
     "gnome-disks",
     "md.Obsidian",
+    "md.obsidian.Obsidian",
   ]),
   ...classConfigs("@chrome", ["microsoft-edge", "brave-browser"]),
   ...classConfigs("@zero", [
     "electron",
+    // Older class name, without radius, newer use gtk-all with borders
     "obsidian",
     "Chatgpt",
     "com.anthropic.Claude",
