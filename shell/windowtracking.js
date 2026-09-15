@@ -129,6 +129,14 @@ export class WindowTracker extends Map {
     }
   }
 
+  syncGeometry(metaWindow) {
+    // Mutter can emit size-changed before updating the window's monitor.
+    // Render immediately for smooth resizing, then read the settled state even
+    // when no actor allocation notification follows.
+    this.syncNow(metaWindow);
+    this.queueSync(metaWindow);
+  }
+
   remove(metaWindow) {
     const record = this.get(metaWindow);
     if (!record) return null;

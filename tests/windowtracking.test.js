@@ -1,4 +1,6 @@
 import GLib from "gi://GLib";
+import { computeBorderState } from "../common/border.js";
+import { applyBorderState, getWindowState } from "../shell/compat.js";
 
 import {
   createBorderAttachment,
@@ -599,6 +601,120 @@ test("immediate sync consumes an already queued update", () => {
 
   assertEquals(manager.syncs, [[metaWindow, record]]);
   assertEquals(record.queued, false);
+});
+
+test("resize settles monitor geometry without another allocation signal", () => {
+  const manager = managerFixture();
+  const tracker = new WindowTracker(manager);
+  const metaWindow = signalObject();
+  let monitor = 0;
+  let frame = { x: 100, y: 100, width: 600, height: 400 };
+  const workareas = [
+    { x: 0, y: 0, width: 1920, height: 1080 },
+    { x: 1920, y: 0, width: 1280, height: 720 },
+  ];
+  Object.assign(metaWindow, {
+    get_monitor: () => monitor,
+    get_work_area_current_monitor: () => workareas[monitor],
+    get_frame_rect: () => frame,
+    get_buffer_rect: () => frame,
+  });
+  globalThis.global = {
+    display: { get_n_monitors: () => 2, focus_window: metaWindow },
+  };
+  // The actor allocation deliberately stays unchanged throughout the move.
+  const actor = {
+    get_allocation_box: () => ({ x1: 0, y1: 0, x2: 600, y2: 400 }),
+  };
+  const border = {
+    styles: [],
+    set_position(x, y) {
+      this.position = [x, y];
+    },
+    set_size(width, height) {
+      this.size = [width, height];
+    },
+    set_style(style) {
+      this.styles.push(style);
+    },
+  };
+  const config = {
+    enabled: true,
+    width: 2,
+    maximizedBorder: true,
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    radius: { tl: 8, tr: 8, br: 8, bl: 8 },
+    activeColor: "red",
+    inactiveColor: "gray",
+  };
+  const states = [];
+  manager.syncBorder = () => {
+    const state = computeBorderState(getWindowState(metaWindow, actor), config);
+    states.push(state);
+    record.borderStyle = applyBorderState(border, state, record.borderStyle);
+  };
+  const record = tracker.activate(metaWindow, {
+    live: true,
+    borderStyle: null,
+  });
+  tracker.syncNow(metaWindow);
+  assertEquals(border.size, [604, 404]);
+
+  // A workarea/monitor update is queued, then size-changed arrives while
+  // Mutter still reports the previous monitor. The deferred pass must survive.
+  tracker.queueSync(metaWindow);
+  frame = { x: 1920, y: 100, width: 900, height: 500 };
+  tracker.syncGeometry(metaWindow);
+  assertEquals(border.size, [904, 504]);
+  monitor = 1;
+  drainIdle();
+  assertEquals(border.size, [902, 504]);
+  assertEquals(states.length, 3);
+  assertEquals(border.position, [0, -2]);
+  assertEquals(states[2].borderWidths.left, 0);
+  assertEquals(states[2].radius.tl, 0);
+
+  // A position-only relocation away from the edge restores the complete
+  // border, including its radii, even though its size never changes.
+  frame = { ...frame, x: 2000 };
+  tracker.queueSync(metaWindow);
+  tracker.queueSync(metaWindow);
+  drainIdle();
+  assertEquals(states.length, 4);
+  assertEquals(border.size, [904, 504]);
+  assertEquals(states[3].radius.tl, 8);
+
+  // Closing a lid can briefly leave the window without a logical monitor.
+  monitor = -1;
+  tracker.syncGeometry(metaWindow);
+  assertEquals(border.visible, false);
+  monitor = 0;
+  frame = { x: 100, y: 100, width: 600, height: 400 };
+  drainIdle();
+  assertEquals(border.visible, true);
+  assertEquals(border.size, [604, 404]);
+  tracker.clear();
+});
+
+test("resize follow-up coalesces with allocation and cancels on removal", () => {
+  const manager = managerFixture();
+  const tracker = new WindowTracker(manager);
+  const metaWindow = signalObject();
+  const record = tracker.activate(metaWindow, { live: true });
+  tracker.syncGeometry(metaWindow);
+  tracker.syncGeometry(metaWindow);
+  tracker.queueSync(metaWindow);
+  drainIdle();
+  assertEquals(manager.syncs, [
+    [metaWindow, record],
+    [metaWindow, record],
+    [metaWindow, record],
+  ]);
+
+  tracker.syncGeometry(metaWindow);
+  tracker.remove(metaWindow);
+  drainIdle();
+  assertEquals(manager.syncs.length, 4);
 });
 
 test("immediate updates share active-record failure ownership", () => {

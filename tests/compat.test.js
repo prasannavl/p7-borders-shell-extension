@@ -1,3 +1,5 @@
+import GObject from "gi://GObject";
+import Meta from "gi://Meta";
 import {
   applyBorderState,
   getMaximizeState,
@@ -19,6 +21,14 @@ function maximizeFlags(horizontal, vertical) {
   if (vertical) flags |= 2;
   return flags;
 }
+
+test("display exposes the monitor-entry signal used for geometry updates", () => {
+  GObject.type_class_ref(Meta.Display.$gtype);
+  assertEquals(
+    GObject.signal_lookup("window-entered-monitor", Meta.Display.$gtype) > 0,
+    true,
+  );
+});
 
 test("modern maximize flags report horizontal, vertical, and full states", () => {
   assertEquals(

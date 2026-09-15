@@ -47,6 +47,8 @@ export class BorderManager {
       (_display, metaWindow) => this._queueTrackWindow(metaWindow),
       "workareas-changed",
       () => this._resyncAllGeometry(),
+      "window-entered-monitor",
+      (_display, _monitor, metaWindow) => this._queueUpdate(metaWindow),
       "notify::focus-window",
       () => this._onFocusChanged(),
       this,
@@ -275,7 +277,7 @@ export class BorderManager {
         () => this._windows.remove(metaWindow),
         "notify::fullscreen",
         () => {
-          if (metaWindow.fullscreen) this._windows.syncNow(metaWindow);
+          if (metaWindow.fullscreen) this._windows.syncGeometry(metaWindow);
           else this._queueUpdate(metaWindow);
         },
         "notify::wm-class",
@@ -291,13 +293,10 @@ export class BorderManager {
             metaWindow,
             (data) => data.border.queue_redraw(),
           );
+          this._queueUpdate(metaWindow);
         },
         "size-changed",
-        () => {
-          // Resize immediately for the smoothest result; the later allocation
-          // notification is still queued and coalesced normally.
-          this._windows.syncNow(metaWindow);
-        },
+        () => this._windows.syncGeometry(metaWindow),
         this,
       );
 
