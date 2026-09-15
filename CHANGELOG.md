@@ -2,6 +2,15 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [53] - 2026-09-15
+
+- Recalculate borders after implicit monitor moves and display changes, including
+  lid-close relocation, without relying on another actor allocation notification.
+- Preserve immediate resizing while coalescing a deferred geometry update, and
+  refresh edge hiding and corner radii on position changes and monitor entry.
+- Add regression coverage for monitor transitions, temporary monitor loss, update
+  coalescing, and cleanup, and verify the monitor-entry signal on GNOME 45–50.
+
 ## [52] - 2026-09-14
 
 - Add the `md.obsidian.Obsidian` class to the shared application config so that
