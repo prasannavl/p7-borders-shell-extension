@@ -1,4 +1,4 @@
-import GLib from "gi://GLib";
+import Meta from "gi://Meta";
 import { computeBorderState } from "../common/border.js";
 import { applyBorderState, getWindowState } from "../shell/compat.js";
 
@@ -57,14 +57,62 @@ function managerFixture() {
   };
 }
 
-function drainIdle() {
-  const context = GLib.MainContext.default();
-  while (context.pending()) context.iteration(false);
+let nextDeferredId = 1;
+const deferredCallbacks = new Map();
+const testLaters = {
+  add(when, callback) {
+    assertEquals(when, Meta.LaterType.BEFORE_REDRAW);
+    const id = nextDeferredId++;
+    deferredCallbacks.set(id, callback);
+    return id;
+  },
+  remove(id) {
+    deferredCallbacks.delete(id);
+  },
+};
+
+function trackerFixture(manager = managerFixture()) {
+  return new WindowTracker(manager, testLaters);
+}
+
+function drainDeferred() {
+  while (deferredCallbacks.size > 0) {
+    const [[id, callback]] = deferredCallbacks;
+    deferredCallbacks.delete(id);
+    callback();
+  }
 }
 
 function drainUntil(predicate) {
-  const context = GLib.MainContext.default();
-  while (!predicate() && context.pending()) context.iteration(false);
+  while (!predicate() && deferredCallbacks.size > 0) {
+    const [[id, callback]] = deferredCallbacks;
+    deferredCallbacks.delete(id);
+    callback();
+  }
+}
+
+function laterQueue() {
+  let nextId = 1;
+  const callbacks = new Map();
+  return {
+    added: [],
+    removed: [],
+    add(when, callback) {
+      const id = nextId++;
+      this.added.push({ id, when });
+      callbacks.set(id, callback);
+      return id;
+    },
+    remove(id) {
+      this.removed.push(id);
+      callbacks.delete(id);
+    },
+    run() {
+      const [[id, callback]] = callbacks;
+      callbacks.delete(id);
+      callback();
+    },
+  };
 }
 
 test("live object checks handle normal, destroyed, and disposed objects", () => {
@@ -307,7 +355,7 @@ test("modal policy controls modal, transient, and attached dialogs", () => {
 
 test("pending records add unmanaged cleanup and ignore duplicates", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   const actor = signalObject();
   tracker.addPending(metaWindow, [{
@@ -328,7 +376,7 @@ test("pending records add unmanaged cleanup and ignore duplicates", () => {
 });
 
 test("reconciliation does not replace a healthy pending wait", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const actor = signalObject();
   const tracked = [];
@@ -340,7 +388,7 @@ test("reconciliation does not replace a healthy pending wait", () => {
   const record = tracker.get(metaWindow);
 
   tracker.queueTrack(metaWindow, (win) => tracked.push(win));
-  drainIdle();
+  drainDeferred();
 
   assertEquals(tracker.get(metaWindow), record);
   assertEquals(record.pending.track, null);
@@ -352,7 +400,7 @@ test("reconciliation does not replace a healthy pending wait", () => {
 });
 
 test("pending cleanup disconnects each signal object once", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   tracker.addPending(metaWindow, [{
     object: metaWindow,
@@ -366,7 +414,7 @@ test("pending cleanup disconnects each signal object once", () => {
 });
 
 test("pending cleanup continues after one signal object fails", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const actor = signalObject();
   tracker.addPending(metaWindow, [{
@@ -394,7 +442,7 @@ test("pending cleanup continues after one signal object fails", () => {
 });
 
 test("failed pending setup disconnects earlier signals", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const actor = signalObject();
   metaWindow.connectObject = () => {
@@ -418,7 +466,7 @@ test("failed pending setup disconnects earlier signals", () => {
 });
 
 test("cleanup skips disposed signal objects", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const actor = signalObject({ throws: true });
   tracker.addPending(metaWindow, [{
@@ -433,7 +481,7 @@ test("cleanup skips disposed signal objects", () => {
 });
 
 test("pending records become unviable when a watched actor is disposed", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const actor = signalObject({ destroyed: true });
   tracker.addPending(metaWindow, [{
@@ -446,14 +494,14 @@ test("pending records become unviable when a watched actor is disposed", () => {
 });
 
 test("queued tracking defers work and releases pending signals", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const tracked = [];
   tracker.queueTrack(metaWindow, (win) => tracked.push(win));
 
   assertEquals(tracked, []);
   assertEquals(tracker.isViable(metaWindow), true);
-  drainIdle();
+  drainDeferred();
 
   assertEquals(tracked, [metaWindow]);
   assertEquals(tracker.size, 0);
@@ -461,12 +509,12 @@ test("queued tracking defers work and releases pending signals", () => {
 });
 
 test("removing queued tracking cancels attachment", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const tracked = [];
   tracker.queueTrack(metaWindow, (win) => tracked.push(win));
   tracker.remove(metaWindow);
-  drainIdle();
+  drainDeferred();
 
   assertEquals(tracked, []);
   assertEquals(tracker.size, 0);
@@ -474,7 +522,7 @@ test("removing queued tracking cancels attachment", () => {
 });
 
 test("failed pending cleanup can be explicitly requeued", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const tracked = [];
   tracker.queueTrack(metaWindow, (win) => tracked.push(win));
@@ -498,14 +546,14 @@ test("failed pending cleanup can be explicitly requeued", () => {
   metaWindow.disconnectObject = () => {};
   tracker.queueTrack(metaWindow, (win) => tracked.push(win));
   assertEquals(record.failed, false);
-  drainIdle();
+  drainDeferred();
 
   assertEquals(tracked, [metaWindow]);
   assertEquals(tracker.has(metaWindow), false);
 });
 
 test("clear cancels deferred attachment even when cleanup fails", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const tracked = [];
   tracker.queueTrack(metaWindow, (win) => tracked.push(win));
@@ -523,7 +571,7 @@ test("clear cancels deferred attachment even when cleanup fails", () => {
   assertEquals(error?.message, "disconnect failed");
   assertEquals(record.queued, false);
   assertEquals(record.failed, true);
-  drainIdle();
+  drainDeferred();
   assertEquals(tracked, []);
   assertEquals(tracker.get(metaWindow), record);
 
@@ -532,8 +580,8 @@ test("clear cancels deferred attachment even when cleanup fails", () => {
   assertEquals(tracker.size, 0);
 });
 
-test("queued tracking attaches only one window per idle turn", () => {
-  const tracker = new WindowTracker(managerFixture());
+test("queued tracking attaches only one window per deferred turn", () => {
+  const tracker = trackerFixture();
   const tracked = [];
   tracker.queueTrack(signalObject(), () => tracked.push(1));
   tracker.queueTrack(signalObject(), () => tracked.push(2));
@@ -546,21 +594,54 @@ test("queued tracking attaches only one window per idle turn", () => {
 
 test("queued syncs coalesce for the active window record", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   const record = tracker.activate(metaWindow, { live: true });
   tracker.queueSync(metaWindow);
   tracker.queueSync(metaWindow);
-  drainIdle();
+  drainDeferred();
 
   assertEquals(manager.syncs.length, 1);
   assertEquals(manager.syncs[0], [metaWindow, record]);
   assertEquals(record.queued, false);
 });
 
+test("frame queue coalesces and reads the latest state before redraw", () => {
+  const manager = managerFixture();
+  const laters = laterQueue();
+  const tracker = new WindowTracker(manager, laters);
+  const metaWindow = signalObject();
+  let state = "old";
+  manager.syncBorder = () => manager.syncs.push(state);
+  tracker.activate(metaWindow, { live: true });
+
+  tracker.queueSync(metaWindow);
+  state = "current";
+  tracker.queueSync(metaWindow);
+
+  assertEquals(laters.added, [{
+    id: 1,
+    when: Meta.LaterType.BEFORE_REDRAW,
+  }]);
+  laters.run();
+  assertEquals(manager.syncs, ["current"]);
+  tracker.clear();
+});
+
+test("clear cancels queued frame work", () => {
+  const laters = laterQueue();
+  const tracker = new WindowTracker(managerFixture(), laters);
+  const metaWindow = signalObject();
+  tracker.activate(metaWindow, { live: true });
+  tracker.queueSync(metaWindow);
+
+  tracker.clear();
+  assertEquals(laters.removed, [1]);
+});
+
 test("failed sync remains unviable until the record is rebuilt", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   const record = tracker.activate(metaWindow, { live: true });
   manager.syncBorder = () => {
@@ -579,25 +660,25 @@ test("failed sync remains unviable until the record is rebuilt", () => {
 
   manager.syncBorder = (win, data) => manager.syncs.push([win, data]);
   tracker.syncNow(metaWindow);
-  drainIdle();
+  drainDeferred();
   assertEquals(manager.syncs, []);
 
   tracker.remove(metaWindow);
   const replacement = tracker.activate(metaWindow, { live: true });
   tracker.queueSync(metaWindow);
-  drainIdle();
+  drainDeferred();
   assertEquals(manager.syncs, [[metaWindow, replacement]]);
 });
 
 test("immediate sync consumes an already queued update", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   const record = tracker.activate(metaWindow, { live: true });
   tracker.queueSync(metaWindow);
 
   tracker.syncNow(metaWindow);
-  drainIdle();
+  drainDeferred();
 
   assertEquals(manager.syncs, [[metaWindow, record]]);
   assertEquals(record.queued, false);
@@ -605,7 +686,7 @@ test("immediate sync consumes an already queued update", () => {
 
 test("resize settles monitor geometry without another allocation signal", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   let monitor = 0;
   let frame = { x: 100, y: 100, width: 600, height: 400 };
@@ -667,7 +748,7 @@ test("resize settles monitor geometry without another allocation signal", () => 
   tracker.syncGeometry(metaWindow);
   assertEquals(border.size, [904, 504]);
   monitor = 1;
-  drainIdle();
+  drainDeferred();
   assertEquals(border.size, [902, 504]);
   assertEquals(states.length, 3);
   assertEquals(border.position, [0, -2]);
@@ -679,7 +760,7 @@ test("resize settles monitor geometry without another allocation signal", () => 
   frame = { ...frame, x: 2000 };
   tracker.queueSync(metaWindow);
   tracker.queueSync(metaWindow);
-  drainIdle();
+  drainDeferred();
   assertEquals(states.length, 4);
   assertEquals(border.size, [904, 504]);
   assertEquals(states[3].radius.tl, 8);
@@ -690,7 +771,7 @@ test("resize settles monitor geometry without another allocation signal", () => 
   assertEquals(border.visible, false);
   monitor = 0;
   frame = { x: 100, y: 100, width: 600, height: 400 };
-  drainIdle();
+  drainDeferred();
   assertEquals(border.visible, true);
   assertEquals(border.size, [604, 404]);
   tracker.clear();
@@ -698,13 +779,13 @@ test("resize settles monitor geometry without another allocation signal", () => 
 
 test("resize follow-up coalesces with allocation and cancels on removal", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   const record = tracker.activate(metaWindow, { live: true });
   tracker.syncGeometry(metaWindow);
   tracker.syncGeometry(metaWindow);
   tracker.queueSync(metaWindow);
-  drainIdle();
+  drainDeferred();
   assertEquals(manager.syncs, [
     [metaWindow, record],
     [metaWindow, record],
@@ -713,12 +794,12 @@ test("resize follow-up coalesces with allocation and cancels on removal", () => 
 
   tracker.syncGeometry(metaWindow);
   tracker.remove(metaWindow);
-  drainIdle();
+  drainDeferred();
   assertEquals(manager.syncs.length, 4);
 });
 
 test("immediate updates share active-record failure ownership", () => {
-  const tracker = new WindowTracker(managerFixture());
+  const tracker = trackerFixture();
   const metaWindow = signalObject();
   const record = tracker.activate(metaWindow, { live: true });
   const updates = [];
@@ -739,13 +820,13 @@ test("immediate updates share active-record failure ownership", () => {
   assertEquals(record.failed, true);
   assertEquals(record.queued, false);
   tracker.updateNow(metaWindow, () => updates.push("unexpected"));
-  drainIdle();
+  drainDeferred();
   assertEquals(updates, [record]);
 });
 
-test("queued sync updates only one window per idle turn", () => {
+test("queued sync updates only one window per deferred turn", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const first = signalObject();
   const second = signalObject();
   tracker.activate(first, { live: true });
@@ -761,7 +842,7 @@ test("queued sync updates only one window per idle turn", () => {
 
 test("attachment and sync work share one time-sliced queue", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const events = [];
   const active = signalObject();
   tracker.activate(active, { live: true });
@@ -777,7 +858,7 @@ test("attachment and sync work share one time-sliced queue", () => {
 
 test("a continuously requeued window cannot starve later syncs", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const first = signalObject();
   const second = signalObject();
   tracker.activate(first, { live: true });
@@ -798,7 +879,7 @@ test("a continuously requeued window cannot starve later syncs", () => {
     first,
     second,
   ]);
-  drainIdle();
+  drainDeferred();
   assertEquals(manager.syncs.map(([metaWindow]) => metaWindow), [
     first,
     second,
@@ -808,7 +889,7 @@ test("a continuously requeued window cannot starve later syncs", () => {
 
 test("queued sync skips invalid records without stranding later work", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const deadWindow = signalObject({ destroyed: true });
   const invalidWindow = signalObject();
   const validWindow = signalObject();
@@ -818,13 +899,13 @@ test("queued sync skips invalid records without stranding later work", () => {
   tracker.queueSync(deadWindow);
   tracker.queueSync(invalidWindow);
   tracker.queueSync(validWindow);
-  drainIdle();
+  drainDeferred();
   assertEquals(manager.syncs, [[validWindow, validRecord]]);
 });
 
 test("removing records cancels pending signals and queued syncs", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const first = signalObject();
   const second = signalObject();
   tracker.activate(first, { live: true });
@@ -832,7 +913,7 @@ test("removing records cancels pending signals and queued syncs", () => {
   tracker.addPending(second, []);
   tracker.remove(first);
   tracker.remove(second);
-  drainIdle();
+  drainDeferred();
 
   assertEquals(tracker.size, 0);
   assertEquals(manager.syncs, []);
@@ -843,7 +924,7 @@ test("removing records cancels pending signals and queued syncs", () => {
 
 test("active records remain tracked until cleanup succeeds", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const metaWindow = signalObject();
   const record = tracker.activate(metaWindow, { live: true });
   tracker.queueSync(metaWindow);
@@ -870,7 +951,7 @@ test("active records remain tracked until cleanup succeeds", () => {
 
 test("batch cleanup continues after one record fails", () => {
   const manager = managerFixture();
-  const tracker = new WindowTracker(manager);
+  const tracker = trackerFixture(manager);
   const first = signalObject();
   const second = signalObject();
   tracker.activate(first, { live: true });

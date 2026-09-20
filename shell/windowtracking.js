@@ -1,10 +1,11 @@
-import GLib from "gi://GLib";
+import Meta from "gi://Meta";
 
 export class WindowTracker extends Map {
-  constructor(manager) {
+  constructor(manager, laters) {
     super();
     this._manager = manager;
-    this._idleId = 0;
+    this._laters = laters;
+    this._sourceId = 0;
   }
 
   set(metaWindow, record) {
@@ -168,8 +169,8 @@ export class WindowTracker extends Map {
   }
 
   _cancelQueue() {
-    if (this._idleId) GLib.source_remove(this._idleId);
-    this._idleId = 0;
+    if (this._sourceId) this._laters.remove(this._sourceId);
+    this._sourceId = 0;
     for (const record of this.values()) record.queued = false;
   }
 
@@ -192,30 +193,32 @@ export class WindowTracker extends Map {
   }
 
   _queueNext() {
-    if (this._idleId || !this._nextQueued()) return;
+    if (this._sourceId || !this._nextQueued()) return;
 
-    // One source owns all deferred window work and yields after each item.
-    this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+    const processNext = () => {
+      this._sourceId = 0;
       const next = this._nextQueued();
-      if (!next) {
-        this._idleId = 0;
-        return GLib.SOURCE_REMOVE;
-      }
+      if (!next) return false;
 
       const [metaWindow, record] = next;
       try {
         this._processQueued(metaWindow, record);
       } catch (error) {
         // A failed record must not strand unrelated queued work.
-        this._idleId = 0;
         this._queueNext();
         throw error;
       }
 
-      if (this._nextQueued()) return GLib.SOURCE_CONTINUE;
-      this._idleId = 0;
-      return GLib.SOURCE_REMOVE;
-    });
+      this._queueNext();
+      return false;
+    };
+
+    // Runtime work belongs to Mutter's frame queue so coalesced state is read
+    // after resize processing and immediately before the stage is redrawn.
+    this._sourceId = this._laters.add(
+      Meta.LaterType.BEFORE_REDRAW,
+      processNext,
+    );
   }
 }
 

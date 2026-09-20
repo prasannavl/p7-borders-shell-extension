@@ -25,7 +25,10 @@ export class BorderManager {
      *   borderStyle: string | null,
      *   releaseBorder: Function,
      * }>} */
-    this._windows = new WindowTracker(this);
+    this._windows = new WindowTracker(
+      this,
+      global.compositor.get_laters(),
+    );
     /** @type {Meta.Window | null} */
     this._lastFocusedWindow = null;
 
@@ -184,13 +187,13 @@ export class BorderManager {
   }
 
   _queueUpdate(metaWindow) {
-    // Draw on the next idle cycle so bursts of Shell signals coalesce.
+    // Draw before the next stage redraw so bursts of Shell signals coalesce.
     this._windows.queueSync(metaWindow);
   }
 
   _queueTrackWindow(metaWindow) {
-    // Attach one border per idle turn so startup and retracking cannot monopolize
-    // the Shell thread. The tracker owns cancellation until attachment begins.
+    // Attach one border per deferred turn so startup and retracking cannot
+    // monopolize the Shell thread. The tracker owns cancellation until then.
     if (!this._isInterestingWindow(metaWindow)) return;
     this._windows.queueTrack(metaWindow, (win) => this._tryTrackWindow(win));
   }

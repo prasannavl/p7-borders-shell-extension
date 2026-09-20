@@ -30,6 +30,13 @@ test("display exposes the monitor-entry signal used for geometry updates", () =>
   );
 });
 
+test("compositor exposes the before-redraw queue used for updates", () => {
+  assertEquals(typeof Meta.Compositor.prototype.get_laters, "function");
+  assertEquals(typeof Meta.Laters.prototype.add, "function");
+  assertEquals(typeof Meta.Laters.prototype.remove, "function");
+  assertEquals(typeof Meta.LaterType.BEFORE_REDRAW, "number");
+});
+
 test("modern maximize flags report horizontal, vertical, and full states", () => {
   assertEquals(
     getMaximizeState({
