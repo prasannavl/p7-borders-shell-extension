@@ -276,6 +276,10 @@ export class BorderManager {
       actor.connectObject(
         "notify::allocation",
         queueUpdate,
+        // Frozen clients can acknowledge a monitor-driven resize after the
+        // earlier window events. Mutter synchronizes actor geometry on thaw.
+        "thawed",
+        queueUpdate,
         this,
       );
       metaWindow.connectObject(

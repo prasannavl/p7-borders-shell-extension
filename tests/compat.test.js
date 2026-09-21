@@ -42,6 +42,14 @@ test("windows expose restore, scale, and maximize state events", () => {
   assertEquals(properties.has("maximized-vertically"), true);
 });
 
+test("window actors expose resize completion events", () => {
+  GObject.type_class_ref(Meta.WindowActor.$gtype);
+  assertEquals(
+    GObject.signal_lookup("thawed", Meta.WindowActor.$gtype) > 0,
+    true,
+  );
+});
+
 test("compositor exposes the before-redraw queue used for updates", () => {
   assertEquals(typeof Meta.Compositor.prototype.get_laters, "function");
   assertEquals(typeof Meta.Laters.prototype.add, "function");
