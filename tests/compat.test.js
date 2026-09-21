@@ -22,12 +22,24 @@ function maximizeFlags(horizontal, vertical) {
   return flags;
 }
 
-test("display exposes the monitor-entry signal used for geometry updates", () => {
+test("display exposes monitor transition signals used for geometry updates", () => {
   GObject.type_class_ref(Meta.Display.$gtype);
-  assertEquals(
-    GObject.signal_lookup("window-entered-monitor", Meta.Display.$gtype) > 0,
-    true,
+  for (const signal of ["window-entered-monitor", "window-left-monitor"]) {
+    assertEquals(GObject.signal_lookup(signal, Meta.Display.$gtype) > 0, true);
+  }
+});
+
+test("windows expose restore, scale, and maximize state events", () => {
+  GObject.type_class_ref(Meta.Window.$gtype);
+  for (const signal of ["shown", "highest-scale-monitor-changed"]) {
+    assertEquals(GObject.signal_lookup(signal, Meta.Window.$gtype) > 0, true);
+  }
+
+  const properties = new Set(
+    GObject.Object.list_properties.call(Meta.Window).map(({ name }) => name),
   );
+  assertEquals(properties.has("maximized-horizontally"), true);
+  assertEquals(properties.has("maximized-vertically"), true);
 });
 
 test("compositor exposes the before-redraw queue used for updates", () => {

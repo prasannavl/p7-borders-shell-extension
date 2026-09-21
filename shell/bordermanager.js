@@ -52,6 +52,8 @@ export class BorderManager {
       () => this._resyncAllGeometry(),
       "window-entered-monitor",
       (_display, _monitor, metaWindow) => this._queueUpdate(metaWindow),
+      "window-left-monitor",
+      (_display, _monitor, metaWindow) => this._queueUpdate(metaWindow),
       "notify::focus-window",
       () => this._onFocusChanged(),
       this,
@@ -270,25 +272,37 @@ export class BorderManager {
 
     try {
       attachment.attach();
+      const queueUpdate = () => this._queueUpdate(metaWindow);
       actor.connectObject(
         "notify::allocation",
-        () => this._queueUpdate(metaWindow),
+        queueUpdate,
         this,
       );
       metaWindow.connectObject(
         "unmanaged",
         () => this._windows.remove(metaWindow),
+        // Monitor and actor state can change while a window is hidden. Mutter's
+        // shown signal runs after the window is mapped again, so refresh from
+        // the final restore geometry before that frame is drawn.
+        "shown",
+        queueUpdate,
         "notify::fullscreen",
         () => {
           if (metaWindow.fullscreen) this._windows.syncGeometry(metaWindow);
-          else this._queueUpdate(metaWindow);
+          else queueUpdate();
         },
+        "notify::maximized-horizontally",
+        queueUpdate,
+        "notify::maximized-vertically",
+        queueUpdate,
+        "highest-scale-monitor-changed",
+        queueUpdate,
         "notify::wm-class",
         () => this._updateWindowConfig(metaWindow),
         "notify::gtk-application-id",
         () => this._updateWindowConfig(metaWindow),
         "notify::appears-focused",
-        () => this._queueUpdate(metaWindow),
+        queueUpdate,
         "position-changed",
         () => {
           // Prevent Mutter from leaving artifacts while moving windows quickly.
@@ -296,7 +310,7 @@ export class BorderManager {
             metaWindow,
             (data) => data.border.queue_redraw(),
           );
-          this._queueUpdate(metaWindow);
+          queueUpdate();
         },
         "size-changed",
         () => this._windows.syncGeometry(metaWindow),

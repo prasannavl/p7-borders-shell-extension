@@ -2,6 +2,15 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [55] - 2026-09-21
+
+- Refresh borders after hidden or minimized windows are shown so monitor
+  topology changes cannot leave restored windows with stale geometry.
+- Track monitor departure, maximize state, and highest-scale monitor changes
+  through the same coalesced before-redraw update queue.
+- Add compatibility coverage for the new lifecycle events and verify them
+  across GNOME Shell 45 through 50.
+
 ## [54] - 2026-09-21
 
 - Schedule coalesced border work through Mutter's frame-aware `Meta.Laters`
