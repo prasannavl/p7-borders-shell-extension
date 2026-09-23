@@ -58,6 +58,7 @@ Deno.test("all relative runtime imports resolve", async () => {
     "shell/bordermanager.js",
     "shell/compat.js",
     "shell/windowtracking.js",
+    "shell/workarounds/x11scaling.js",
     "prefs/config.js",
     "prefs/ui.js",
   ];

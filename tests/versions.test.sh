@@ -47,6 +47,7 @@ for version in 45 46 47 48 49 50; do
     gjs --version
     glib-compile-schemas schemas
     run_test compat gjs -m tests/compat.test.js
+    run_test workarounds gjs -m tests/workarounds.test.js
     run_test windowtracking gjs -m tests/windowtracking.test.js
     run_test settings env \
       GSETTINGS_SCHEMA_DIR="$PWD/schemas" \

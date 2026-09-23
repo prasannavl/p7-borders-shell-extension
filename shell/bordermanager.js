@@ -3,6 +3,7 @@ import St from "gi://St";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import { computeBorderState } from "../common/border.js";
 import { applyBorderState, getWindowState } from "./compat.js";
+import { createX11ScalingWorkaround } from "./workarounds/x11scaling.js";
 import { ConfigManager } from "../common/config.js";
 import {
   createBorderAttachment,
@@ -21,6 +22,7 @@ export class BorderManager {
     /** @type {WindowTracker<Meta.Window, {
      *   border: St.Widget,
      *   actor: Meta.WindowActor,
+     *   x11ScalingWorkaround: ReturnType<typeof createX11ScalingWorkaround>,
      *   config: any,
      *   borderStyle: string | null,
      *   releaseBorder: Function,
@@ -86,9 +88,12 @@ export class BorderManager {
   // --- Window tracker contract --------------------------------------------
 
   syncBorder(metaWindow, data) {
-    const { actor, config } = data;
+    const { actor, config, x11ScalingWorkaround } = data;
 
-    const windowState = getWindowState(metaWindow, actor);
+    let windowState = getWindowState(metaWindow, actor);
+    if (x11ScalingWorkaround) {
+      windowState = x11ScalingWorkaround.apply(windowState);
+    }
     const policyState = computeBorderState(windowState, config);
 
     this._applyBorderState(data, policyState);
@@ -97,7 +102,7 @@ export class BorderManager {
   cleanupWindow(metaWindow, data) {
     this._logWindow(metaWindow, "untrack", data.config);
 
-    const { actor } = data;
+    const { actor, x11ScalingWorkaround } = data;
     const error = runAll([
       () => {
         if (isLiveObject(metaWindow)) metaWindow.disconnectObject(this);
@@ -105,6 +110,7 @@ export class BorderManager {
       () => {
         if (isLiveObject(actor)) actor.disconnectObject(this);
       },
+      () => x11ScalingWorkaround?.disconnect(this),
       () => data.releaseBorder(),
     ]);
     if (error) throw error;
@@ -188,6 +194,13 @@ export class BorderManager {
     if (cleanupError) throw cleanupError;
   }
 
+  _retrackAllWindows() {
+    const windows = global.display.list_all_windows();
+    const cleanupError = this._windows.removeAll(this._windows.keys());
+    for (const win of windows) this._queueTrackWindow(win);
+    if (cleanupError) throw cleanupError;
+  }
+
   _queueUpdate(metaWindow) {
     // Draw before the next stage redraw so bursts of Shell signals coalesce.
     this._windows.queueSync(metaWindow);
@@ -258,6 +271,11 @@ export class BorderManager {
       visible: false,
     });
     const config = this.configManager.getConfigForWindow(metaWindow);
+    const x11ScalingWorkaround = createX11ScalingWorkaround(
+      metaWindow,
+      actor,
+      this.configManager?.globalConfig?.x11ScalingWorkaroundEnabled ?? true,
+    );
 
     // Register ownership before the first fallible actor mutation, so failed
     // attachment rollback remains part of normal retryable window cleanup.
@@ -265,6 +283,7 @@ export class BorderManager {
     this._windows.activate(metaWindow, {
       border,
       actor,
+      x11ScalingWorkaround,
       config,
       borderStyle: null,
       releaseBorder: attachment.release,
@@ -282,6 +301,7 @@ export class BorderManager {
         queueUpdate,
         this,
       );
+      x11ScalingWorkaround?.connect(queueUpdate, this);
       metaWindow.connectObject(
         "unmanaged",
         () => this._windows.remove(metaWindow),
@@ -289,7 +309,10 @@ export class BorderManager {
         // shown signal runs after the window is mapped again, so refresh from
         // the final restore geometry before that frame is drawn.
         "shown",
-        queueUpdate,
+        () => {
+          x11ScalingWorkaround?.connect(queueUpdate, this);
+          queueUpdate();
+        },
         "notify::fullscreen",
         () => {
           if (metaWindow.fullscreen) this._windows.syncGeometry(metaWindow);
@@ -334,7 +357,12 @@ export class BorderManager {
   _onConfigChanged(changeType) {
     this._logger.log(`conf changed: ${changeType}`);
     if (changeType === "modal-enabled") this._reconcileAllWindows();
-    else if (changeType !== "verbose-logging") {
+    else if (changeType === "x11-scaling-workaround-enabled") {
+      // Toggling is rare; rebuild once so the disabled steady state owns no
+      // workaround objects or texture signals and pays no per-update setting
+      // check.
+      this._retrackAllWindows();
+    } else if (changeType !== "verbose-logging") {
       this._refreshAllWindowConfigs();
     }
   }

@@ -2,6 +2,14 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [57] - 2026-09-24
+
+- Correct X11 borders after display scaling changes by sizing from the rendered
+  Xwayland surface when Mutter reports stale window geometry. Native Wayland
+  windows are unaffected.
+- Add an opt-out `x11-scaling-workaround-enabled` setting with a Compatibility
+  preferences group, and retrack windows when it is toggled.
+
 ## [56] - 2026-09-22
 
 - Refresh borders after Mutter thaws a window actor so delayed client resize

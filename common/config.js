@@ -224,6 +224,7 @@ export class ConfigManager {
     const property = {
       "modal-enabled": "modalEnabled",
       "verbose-logging": "verboseLogging",
+      "x11-scaling-workaround-enabled": "x11ScalingWorkaroundEnabled",
     }[changeType];
     if (property) {
       this.globalConfig[property] = this._settings.get_boolean(changeType);
@@ -236,6 +237,9 @@ export class ConfigManager {
       radiusEnabled: this._settings.get_boolean("radius-enabled"),
       modalEnabled: this._settings.get_boolean("modal-enabled"),
       verboseLogging: this._settings.get_boolean("verbose-logging"),
+      x11ScalingWorkaroundEnabled: this._settings.get_boolean(
+        "x11-scaling-workaround-enabled",
+      ),
     };
 
     const defaults = {

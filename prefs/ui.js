@@ -954,6 +954,22 @@ function buildGlobalPage(window, settings, configStore) {
   });
   behaviorGroup.add(useShippedConfigsRow);
 
+  const compatibilityGroup = new Adw.PreferencesGroup({
+    title: "Compatibility",
+    description: "Workarounds for GNOME and Mutter bugs that affect borders.",
+  });
+  const x11ScalingWorkaround = new Adw.SwitchRow({
+    title: "Correct X11 borders after display scaling changes",
+    subtitle: "Use Xwayland's rendered size when window geometry is stale",
+  });
+  bindSetting(
+    settings,
+    "x11-scaling-workaround-enabled",
+    x11ScalingWorkaround,
+    "active",
+  );
+  compatibilityGroup.add(x11ScalingWorkaround);
+
   const defaultsGroup = new Adw.PreferencesGroup({ title: "Defaults" });
   for (
     const [key, params] of [
@@ -993,6 +1009,7 @@ function buildGlobalPage(window, settings, configStore) {
   }
 
   page.add(behaviorGroup);
+  page.add(compatibilityGroup);
   page.add(defaultsGroup);
   page.add(colorsGroup);
   return page;

@@ -32,6 +32,12 @@
       <summary>Enable verbose logging</summary>
       <description>Log detailed tracking events for debugging</description>
     </key>
+
+    <key name="x11-scaling-workaround-enabled" type="b">
+      <default>true</default>
+      <summary>Correct X11 borders after display scaling changes</summary>
+      <description>Use the rendered Xwayland surface size when Mutter reports stale window geometry after monitor scale changes</description>
+    </key>
     
     <!-- Default app config -->
     <key name="default-margins" type="i">

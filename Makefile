@@ -3,7 +3,7 @@ DIST_DIR := dist
 SCHEMAS_DIR := schemas
 TOPLEVEL_JS := $(wildcard *.js)
 COMMON_JS := $(wildcard common/*.js)
-SHELL_JS := $(wildcard shell/*.js)
+SHELL_JS := $(wildcard shell/*.js shell/*/*.js)
 PREFS_JS := $(wildcard prefs/*.js)
 JS_FILES := $(TOPLEVEL_JS) $(COMMON_JS) $(SHELL_JS) $(PREFS_JS)
 EXTRA_SOURCES := README.md CHANGELOG.md common shell prefs
@@ -17,6 +17,7 @@ lint:
 test: lint schemas
 	deno test --allow-read=. tests/appconfig.test.js tests/borderstate.test.js tests/metadata.test.js
 	gjs -m tests/compat.test.js
+	gjs -m tests/workarounds.test.js
 	gjs -m tests/windowtracking.test.js
 	GSETTINGS_SCHEMA_DIR=$(CURDIR)/$(SCHEMAS_DIR) GSETTINGS_BACKEND=memory \
 		gjs -m tests/settings.test.js

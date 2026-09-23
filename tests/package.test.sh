@@ -13,6 +13,8 @@ expected_files=$(printf '%s\n' \
   shell/bordermanager.js \
   shell/compat.js \
   shell/windowtracking.js \
+  shell/workarounds/ \
+  shell/workarounds/x11scaling.js \
   metadata.json \
   prefs/ \
   prefs/config.js \

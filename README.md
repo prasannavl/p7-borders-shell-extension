@@ -97,7 +97,17 @@ Global defaults apply when no app-specific rule exists:
 - `radius-enabled` (bool)
 - `modal-enabled` (bool)
 - `verbose-logging` (bool)
+- `x11-scaling-workaround-enabled` (bool, enabled by default)
 - `use-shipped-configs` (bool)
+
+### Compatibility workarounds
+
+**Correct X11 borders after display scaling changes:** when the active monitor
+set changes, Xwayland can render an existing X11 window at a new scale while
+Mutter continues reporting its previous frame geometry until the client is
+resized. With `x11-scaling-workaround-enabled`, the extension sizes the border
+from the rendered Xwayland surface instead. Native Wayland windows are not
+affected.
 
 ### App configs (JSON)
 

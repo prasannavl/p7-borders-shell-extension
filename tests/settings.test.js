@@ -190,6 +190,7 @@ test("ConfigManager normalizes scalar defaults and global settings", () => {
       radiusEnabled: true,
       modalEnabled: false,
       verboseLogging: true,
+      x11ScalingWorkaroundEnabled: true,
     });
     assertEquals(manager.defaults.margins, {
       top: -2,
@@ -593,7 +594,7 @@ test("settings changes reload config and notify listeners", () => {
   );
 });
 
-test("logging and modal changes retain compiled application configs", () => {
+test("global behavior changes retain compiled application configs", () => {
   const changes = [];
   withManager(
     (manager) => {
@@ -601,12 +602,18 @@ test("logging and modal changes retain compiled application configs", () => {
       const appConfigs = manager.appConfigs;
       settings.set_boolean("verbose-logging", true);
       settings.set_boolean("modal-enabled", false);
+      settings.set_boolean("x11-scaling-workaround-enabled", false);
 
       assertEquals(manager.defaults === defaults, true);
       assertEquals(manager.appConfigs === appConfigs, true);
       assertEquals(manager.globalConfig.verboseLogging, true);
       assertEquals(manager.globalConfig.modalEnabled, false);
-      assertEquals(changes, ["verbose-logging", "modal-enabled"]);
+      assertEquals(manager.globalConfig.x11ScalingWorkaroundEnabled, false);
+      assertEquals(changes, [
+        "verbose-logging",
+        "modal-enabled",
+        "x11-scaling-workaround-enabled",
+      ]);
     },
     logger,
     (change) => changes.push(change),
