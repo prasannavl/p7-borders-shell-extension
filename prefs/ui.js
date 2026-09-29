@@ -126,6 +126,9 @@ function attachColorPicker(row) {
     syncing = true;
     row.text = formatRgba(button.rgba);
     syncing = false;
+    // A picked color is a completed edit, unlike an in-progress entry, so
+    // commit it through the same apply path that typed edits use.
+    row.emit("apply");
   });
 
   syncButtonFromText();

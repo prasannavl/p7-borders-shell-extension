@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [58] - 2026-09-29
+
+- Commit a color picked on the Global page through the row's apply path so
+  `default-active-color` and `default-inactive-color` update immediately,
+  instead of staying unchanged until the apply button is clicked.
+
 ## [57] - 2026-09-24
 
 - Correct X11 borders after display scaling changes by sizing from the rendered
