@@ -78,6 +78,8 @@ export const BASE_APP_CONFIGS = {
     "org.pulseaudio.pavucontrol",
   ]),
   ...classConfigs("@gtk-all", [
+    "code",
+    "antigravity",
     "lollypop",
     "geary",
     "gnome-disks",
@@ -93,8 +95,6 @@ export const BASE_APP_CONFIGS = {
     "com.anthropic.Claude",
     "zulip",
     "slack",
-    "code",
-    "antigravity",
     "spotify",
     "discord",
     "mpv",

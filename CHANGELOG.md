@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [59] - 2026-10-02
+
+- Move VS Code and the Antigravity editor to the `@gtk-all` preset so their
+  borders use the rounded 10px top and 11px bottom radius instead of the
+  square-cornered `@zero` preset.
+
 ## [58] - 2026-09-29
 
 - Commit a color picked on the Global page through the row's apply path so
