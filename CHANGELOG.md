@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   extension against it.
 - Expose the Shell's GSettings schema directories through `XDG_DATA_DIRS` in the
   development shells so schema-dependent tests can find GNOME's schemas.
+- Include the unreleased 59 change: VS Code and Antigravity move to the
+  `@gtk-all` preset, so version 60 carries both changes.
 
 ## [59] - 2026-10-02
 
