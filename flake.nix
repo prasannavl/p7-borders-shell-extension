@@ -8,7 +8,10 @@
     nixpkgs-47.url = "github:NixOS/nixpkgs/nixos-24.11";
     nixpkgs-48.url = "github:NixOS/nixpkgs/nixos-25.05";
     nixpkgs-49.url = "github:NixOS/nixpkgs/nixos-25.11";
-    nixpkgs-50.url = "github:NixOS/nixpkgs/nixos-unstable";
+    # Pinned to the last nixos-unstable revision with GNOME 50, so that the
+    # gnome-50 shell keeps testing GNOME 50 while unstable moved on to 51.
+    nixpkgs-50.url = "github:NixOS/nixpkgs/34ab99075ac4f7e40cf037eef32cb1c360bb85e9";
+    nixpkgs-51.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs = inputs @ {
@@ -44,6 +47,7 @@
       "gnome-48" = inputs.nixpkgs-48;
       "gnome-49" = inputs.nixpkgs-49;
       "gnome-50" = inputs.nixpkgs-50;
+      "gnome-51" = inputs.nixpkgs-51;
     };
   in {
     packages = forAllSystems (
@@ -90,6 +94,14 @@
       pkgs = pkgsFor system;
       commonPackages = commonPackagesFor pkgs;
       formatterPkgs = formatterPkgsFor pkgs;
+      # GSettings only discovers schemas through XDG_DATA_DIRS. GNOME packages
+      # collect their schema directories in GSETTINGS_SCHEMAS_PATH, so expose
+      # them there and let tests find the system schemas next to ours.
+      schemaPathHook = ''
+        if [ -n "''${GSETTINGS_SCHEMAS_PATH:-}" ]; then
+          export XDG_DATA_DIRS="$GSETTINGS_SCHEMAS_PATH''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+        fi
+      '';
       versionShells = nixpkgs.lib.mapAttrs (
         _name: source: let
           versionPkgs = import source {inherit system;};
@@ -105,6 +117,7 @@
             shellHook = ''
               export GNOME_SHELL_STORE=${gnomeShell}
               export GNOME_SHELL_EXTENSIONS_RESOURCE=${gnomeShell}/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource
+              ${schemaPathHook}
             '';
           }
       ) versionNixpkgs;
@@ -118,6 +131,7 @@
             done | sort -u | paste -sd:)
             export GI_TYPELIB_PATH="$shellGiPath"
             export GNOME_SHELL_EXTENSIONS_RESOURCE=${pkgs.gnome-shell}/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource
+            ${schemaPathHook}
           '';
         };
       });

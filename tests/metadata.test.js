@@ -10,7 +10,15 @@ const schema = await Deno.readTextFile(
 );
 
 Deno.test("metadata declares the supported Shell versions", () => {
-  assertEquals(metadata["shell-version"], ["45", "46", "47", "48", "49", "50"]);
+  assertEquals(metadata["shell-version"], [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51",
+  ]);
 });
 
 Deno.test("metadata and schema identify the same extension", () => {

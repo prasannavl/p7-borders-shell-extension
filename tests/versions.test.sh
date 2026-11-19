@@ -1,6 +1,12 @@
 set -euo pipefail
 
-for version in 45 46 47 48 49 50; do
+# Test every supported Shell version by default; pass versions to narrow it down.
+versions=("$@")
+if [ ${#versions[@]} -eq 0 ]; then
+  versions=(45 46 47 48 49 50 51)
+fi
+
+for version in "${versions[@]}"; do
   nix --quiet develop ".#gnome-$version" --command \
     env GNOME_TEST_VERSION="$version" bash -c '
     set -euo pipefail

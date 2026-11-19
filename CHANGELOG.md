@@ -2,6 +2,13 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [60] - 2026-11-18
+
+- Support GNOME Shell 51 by declaring the new Shell version and testing the
+  extension against it.
+- Expose the Shell's GSettings schema directories through `XDG_DATA_DIRS` in the
+  development shells so schema-dependent tests can find GNOME's schemas.
+
 ## [59] - 2026-10-02
 
 - Move VS Code and the Antigravity editor to the `@gtk-all` preset so their
